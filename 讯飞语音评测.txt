@@ -1,0 +1,1272 @@
+语音评测（流式版）API文档
+#接口说明
+通过智能语音技术自动对发音水平进行评价、发音错误、缺陷定位和问题分析的能力接口。涉及的核心技术主要可分为两个部分：中文普通话发音水平自动评测技术、英文发音水平自动评测技术。
+1.获取鉴权码：从讯飞开放平台申请appid，并添加（流式接口）获取接口密钥APIKey 和 APISecret
+2.集成Websocket接口： 通用接口 + 参数说明，中英文试题格式会有不同，详见试题格式说明
+3.语音评测（普通版）已下线，老用户查看语音评测（普通版）文档请点击查看 ，并请老用户尽快迁移至语音评测（流式版），两者差异与迁移请参考常见问题
+
+点击跳转在线咨询
+
+#接口Demo
+示例demo 请点击 这里 下载。
+目前仅提供部分开发语言的demo，其他语言请参照下方接口文档进行开发。
+也欢迎热心的开发者到 讯飞开放平台社区 分享你们的demo。
+
+#接口要求
+内容	说明
+请求协议	ws[s]（为提高安全性，强烈推荐wss）
+请求地址	wss://ise-api.xfyun.cn/v2/open-ise
+接口鉴权	签名机制，详情请参照下方接口鉴权
+开发语言	任意，只要可以向讯飞云服务发起Websocket请求的均可
+音频属性	采样率16k、位长16bit、单声道
+音频格式	pcm、wav、mp3（需更改aue的值为lame）、speex-wb;
+音频大小	音频数据发送会话时长不能超过5分钟
+语言种类	中文、英文
+#接口调用流程
+参数上传阶段，详见业务参数说明（business）：
+参数第一次上传，data.status=0,并设置cmd="ssb"；
+音频上传阶段，此阶段开始上传音频数据：
+第一帧音频需要设置cmd="auw"，aus=1，data.status=1；
+中间帧音频需要设置cmd="auw"，aus=2，data.status=1；
+最后一帧音频需要设置cmd="auw"，aus=4，并设置data.status=2；
+图片链接替换
+
+#接口鉴权
+在握手阶段，请求方需要对请求进行签名，服务端通过签名来校验请求的合法性。
+
+#鉴权方法
+通过在请求地址后面加上鉴权相关参数的方式。示例url：
+
+wss://ise-api.xfyun.cn/v2/open-ise?authorization=YXBpX2tleT0ia2V5eHh4eHh4eHg4ZWUyNzkzNDg1MTlleHh4eHh4eHgiLCBhbGdvcml0aG09ImhtYWMtc2hhMjU2IiwgaGVhZGVycz0iaG9zdCBkYXRlIHJlcXVlc3QtbGluZSIsIHNpZ25hdHVyZT0iV0MxdFR6MkRJK0E4bktQTmh6N3Q3bEloRzFWQktEaEQzSytSM0trQ0hPcz0i&host=ise-api.xfyun.cn&date=Tue%2C+22+Dec+2020+06%3A29%3A31+GMT
+鉴权参数：
+
+参数	类型	必须	说明	示例
+host	string	是	请求主机	ise-api.xfyun.cn
+date	string	是	当前时间戳，RFC1123格式	Wed, 10 Jul 2019 07:35:43 GMT
+authorization	string	是	使用base64编码的签名相关信息(签名基于hmac-sha256计算)	参考下方authorization参数生成规则
+#authorization参数详细生成规则
+1）获取接口密钥APIKey 和 APISecret。
+在讯飞开放平台控制台，创建WebAPI平台应用并添加语音听写（流式版）服务后即可查看，均为32位字符串。
+
+2）参数authorization base64编码前（authorization_origin）的格式如下。
+
+api_key="$api_key",algorithm="hmac-sha256",headers="host date request-line",signature="$signature"
+其中 api_key 是在控制台获取的APIKey，algorithm 是加密算法（仅支持hmac-sha256），headers 是参与签名的参数（见下方注释）。
+signature 是使用加密算法对参与签名的参数签名后并使用base64编码的字符串，详见下方。
+注： headers是参与签名的参数，请注意是固定的参数名（"host date request-line"），而非这些参数的值。
+
+3）signature的原始字段(signature_origin)规则如下。
+signature原始字段由 host，date，request-line三个参数按照格式拼接成，
+拼接的格式为(\n为换行符,’:’后面有一个空格)：
+
+host: $host\ndate: $date\n$request-line
+假设
+
+请求url = wss://ise-api.xfyun.cn/v2/open-ise
+date = Wed, 10 Jul 2019 07:35:43 GMT
+那么 signature原始字段(signature_origin)则为：
+
+host: ise-api.xfyun.cn
+date: Wed, 10 Jul 2019 07:35:43 GMT
+GET /v2/open-ise HTTP/1.1
+
+4）使用hmac-sha256算法结合apiSecret对signature_origin签名，获得签名后的摘要signature_sha。
+
+signature_sha=hmac-sha256(signature_origin,$apiSecret)
+
+其中 apiSecret 是在控制台获取的APISecret
+5）使用base64编码对signature_sha进行编码获得最终的signature。
+
+signature=base64(signature_sha)
+
+假设
+APISecret = secretxxxxxxxx2df7900c09xxxxxxxx	
+date = Wed, 10 Jul 2019 07:35:43 GMT
+
+则signature为
+signature=WC1tTz2DI+A8nKPNhz7t7lIhG1VBKDhD3K+R3KkCHOs=
+
+6）根据以上信息拼接authorization base64编码前（authorization_origin）的字符串，示例如下。
+
+api_key="keyxxxxxxxx8ee279348519exxxxxxxx", algorithm="hmac-sha256", headers="host date request-line", signature="WC1tTz2DI+A8nKPNhz7t7lIhG1VBKDhD3K+R3KkCHOs="
+
+注： headers是参与签名的参数，请注意是固定的参数名（"host date request-line"），而非这些参数的值。
+7）最后再对authorization_origin进行base64编码获得最终的authorization参数。
+
+authorization = base64(authorization_origin)
+示例：
+authorization=YXBpX2tleT0ia2V5eHh4eHh4eHg4ZWUyNzkzNDg1MTlleHh4eHh4eHgiLCBhbGdvcml0aG09ImhtYWMtc2hhMjU2IiwgaGVhZGVycz0iaG9zdCBkYXRlIHJlcXVlc3QtbGluZSIsIHNpZ25hdHVyZT0iV0MxdFR6MkRJK0E4bktQTmh6N3Q3bEloRzFWQktEaEQzSytSM0trQ0hPcz0i
+#鉴权url示例(Java)
+public static String getAuthUrl(String hostUrl, String apiKey, String apiSecret) throws Exception {
+		URL url = new URL(hostUrl);
+		SimpleDateFormat format = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
+		format.setTimeZone(TimeZone.getTimeZone("GMT"));
+		String date = format.format(new Date());
+		//String date = format.format(new Date());
+		//System.err.println(date);
+		StringBuilder builder = new StringBuilder("host: ").append(url.getHost()).append("\n").//
+				append("date: ").append(date).append("\n").//
+				append("GET ").append(url.getPath()).append(" HTTP/1.1");
+		//System.err.println(builder);
+		Charset charset = Charset.forName("UTF-8");
+		Mac mac = Mac.getInstance("hmacsha256");
+		SecretKeySpec spec = new SecretKeySpec(apiSecret.getBytes(charset), "hmacsha256");
+		mac.init(spec);
+		byte[] hexDigits = mac.doFinal(builder.toString().getBytes(charset));
+		String sha = Base64.getEncoder().encodeToString(hexDigits);
+		//System.err.println(sha);
+		String authorization = String.format("api_key=\"%s\", algorithm=\"%s\", headers=\"%s\", signature=\"%s\"", apiKey, "hmac-sha256", "host date request-line", sha);
+		//System.err.println(authorization);
+		HttpUrl httpUrl = HttpUrl.parse("https://" + url.getHost() + url.getPath()).newBuilder().//
+				addQueryParameter("authorization", Base64.getEncoder().encodeToString(authorization.getBytes(charset))).//
+				addQueryParameter("date", date).//
+				addQueryParameter("host", url.getHost()).//
+				build();
+		return httpUrl.toString();
+	}
+#鉴权结果
+如果握手成功，会返回HTTP 101状态码，表示协议升级成功；如果握手失败，则根据不同错误类型返回不同HTTP Code状态码，同时携带错误描述信息，详细错误说明如下：
+
+HTTP Code	说明	错误描述信息	解决方法
+401	缺少authorization参数	{“message”:”Unauthorized”}	检查是否有authorization参数，详情见authorization参数详细生成规则
+401	签名参数解析失败	{“message”:”HMAC signature cannot be verified”}	检查签名的各个参数是否有缺失是否正确，特别确认下复制的api_key是否正确
+401	签名校验失败	{“message”:”HMAC signature does not match”}	签名验证失败，可能原因有很多。
+1. 检查api_key,api_secret 是否正确
+2.检查计算签名的参数host，date，request-line是否按照协议要求拼接。
+3. 检查signature签名的base64长度是否正常(正常44个字节)。
+403	时钟偏移校验失败	{“message”:”HMAC signature cannot be verified, a valid date or x-date header is required for HMAC Authentication”}	检查服务器时间是否标准，相差5分钟以上会报此错误
+403	IP白名单校验失败	{"message":"Your IP address is not allowed"}	可在控制台关闭IP白名单，或者检查IP白名单设置的IP地址是否为本机外网IP地址
+握手失败返回示例：
+
+    HTTP/1.1 401 Forbidden
+    Date: Thu, 06 Dec 2018 07:55:16 GMT
+    Content-Length: 116
+    Content-Type: text/plain； charset=utf-8
+    {
+        "message": "HMAC signature does not match"
+    }
+#接口数据传输与接收
+握手成功后客户端和服务端会建立Websocket连接，客户端通过Websocket连接可以同时上传和接收数据。
+
+//连接成功，开始发送数据
+int frameSize = 1280; //每一帧音频的大小,建议每 40ms 发送 1280B，大小可调整，但是不要超过19200B，即base64压缩后不能超过26000B，否则会报错10163数据过长错误
+int intervel = 40;
+int status = 0;  // 音频的状态
+try (FileInputStream fs = new FileInputStream(file)) {
+    byte[] buffer = new byte[frameSize];
+    //发送音频
+服务端支持的websocket-version 为13，请确保客户端使用的框架支持该版本。
+服务端返回的所有的帧类型均为TextMessage，对应于原生Websocket的协议帧中opcode=1，请确保客户端解析到的帧类型一定为该类型，如果不是，请尝试升级客户端框架版本，或者更换技术框架。
+如果出现分帧问题，即一个json数据包分多帧返回给了客户端，导致客户端解析json失败。出现这种问题大部分情况是客户端的框架对Websocket协议解析存在问题，如果出现请先尝试升级框架版本，或者更换技术框架。
+客户端会话结束后如果需要关闭连接，尽量保证传给服务端的Websocket错误码为1000（如果客户端框架没有提供关闭时传错误码的接口。则无需关注本条）。
+请注意不同音频格式一帧大小的字节数不同，我们建议：未压缩的PCM格式，每次发送音频间隔40ms，每次发送音频字节数1280B；大小可以调整，但最大不要超过19200B，即base64压缩后不能超过26000B，否则会报错10163数据过长错误。
+#请求参数
+请求数据均为json字符串
+
+参数名	类型	必传	描述
+common	object	是	公共参数，仅在握手成功后首帧请求时上传，详见下方
+business	object	是	业务参数，在握手成功后首帧请求与后续数据发送时上传，详见下方
+data	object	是	业务数据流参数，在握手成功后的所有请求中都需要上传，详见下方
+#公共参数说明（common）
+参数名	类型	必传	描述
+app_id	string	是	在平台申请的APPID信息
+#业务参数说明（business）
+参数名	类型	必传	描述	示例
+sub	string	是	服务类型指定
+ise(开放评测)	"ise"
+ent	string	是	中文：cn_vip
+英文：en_vip	"cn_vip"
+category	string	是	中文题型：
+read_syllable（单字朗读，汉语专有）
+read_word（词语朗读）
+read_sentence（句子朗读）
+read_chapter(篇章朗读)
+英文题型：
+read_word（词语朗读）
+read_sentence（句子朗读）
+read_chapter(篇章朗读)
+simple_expression（英文情景反应）
+read_choice（英文选择题）
+topic（英文自由题）
+retell（英文复述题）
+picture_talk（英文看图说话）
+oral_translation（英文口头翻译）	"read_sentence"
+aus	int	是	上传音频时来区分音频的状态（在cmd=auw即音频上传阶段为必传参数）
+1：第一帧音频
+2：中间的音频
+4：最后一帧音频	根据上传阶段取值
+cmd	string	是	用于区分数据上传阶段
+ssb：参数上传阶段
+ttp：文本上传阶段（ttp_skip=true时该阶段可以跳过，直接使用text字段中的文本）
+auw：音频上传阶段	根据上传阶段取值
+text	string	是	待评测文本 utf8 编码，需要加utf8bom 头	'\uFEFF'+text
+tte	string	是	待评测文本编码
+utf-8
+gbk	"utf-8"
+ttp_skip	bool	是	跳过ttp直接使用ssb中的文本进行评测（使用时结合cmd参数查看）,默认值true	true
+extra_ability	string	否	拓展能力（生效条件ise_unite="1", rst="entirety"）
+多维度分信息显示（准确度分、流畅度分、完整度打分）
+extra_ability值为multi_dimension（字词句篇均适用,如选多个能力，用分号；隔开。例如：add("extra_ability"," syll_phone_err_msg;pitch;multi_dimension")）
+单词基频信息显示（基频开始值、结束值）
+extra_ability值为pitch ，仅适用于单词和句子题型
+音素错误信息显示（声韵、调型是否正确）
+extra_ability值为syll_phone_err_msg（字词句篇均适用,如选多个能力，用分号；隔开。例如：add("extra_ability"," syll_phone_err_msg;pitch;multi_dimension")）	"multi_dimension"
+aue	string	否	音频格式
+raw: 未压缩的pcm格式音频或wav（如果用wav格式音频，建议去掉头部）
+lame: mp3格式音频
+speex-wb;7: 讯飞定制speex格式音频(默认值)	"raw"
+auf	string	否	音频采样率
+默认 audio/L16;rate=16000	"audio L16；rate=16000"
+rstcd	string	否	返回结果格式
+utf8
+gbk （默认值）	"utf8"
+group	string	否	针对群体不同，相同试卷音频评分结果不同 （仅中文字、词、句、篇章题型支持），此参数会影响准确度得分
+adult（成人群体，不设置群体参数时默认为成人）
+youth（中学群体）
+pupil（小学群体，中文句、篇题型设置此参数值会有accuracy_score得分的返回）	"adult"
+check_type	string	否	设置评测的打分及检错松严门限（仅中文引擎支持）
+easy：容易
+common：普通
+hard：困难	"common"
+grade	string	否	设置评测的学段参数 （仅中文题型：中小学的句子、篇章题型支持）
+junior(1,2年级)
+middle(3,4年级)
+senior(5,6年级)	"middle"
+rst	string	否	评测返回结果与分制控制（评测返回结果与分制控制也会受到ise_unite与plev参数的影响）
+完整：entirety（默认值）
+中文百分制推荐传参（rst="entirety"且ise_unite="1"且配合extra_ability参数使用）
+英文百分制推荐传参（rst="entirety"且ise_unite="1"且配合extra_ability参数使用）
+精简：plain（评测返回结果将只有总分），如：
+<?xml version="1.0" ?><FinalResult><ret value="0"/><total_score value="98.507320"/></FinalResult>	"entirety"
+ise_unite	string	否	返回结果控制
+0：不控制（默认值）
+1：控制（extra_ability参数将影响全维度等信息的返回）	"0"
+plev	string	否	在rst="entirety"（默认值）且ise_unite="0"（默认值）的情况下plev的取值不同对返回结果有影响。
+plev：0(给出全部信息，汉语包含rec_node_type、perr_msg、fluency_score、phone_score信息的返回；英文包含accuracy_score、serr_msg、 syll_accent、fluency_score、standard_score、pitch信息的返回)	"0"
+请求参数示例：
+
+第一次数据发送：
+
+{
+  "common": {
+    "app_id": "xxxxxxx"
+  },
+  "business": {
+    "aue": "raw",
+    "auf": "audio/L16；rate=16000",
+    "category": "read_sentence",
+    "cmd": "ssb",
+    "ent": "en_vip",
+    "sub": "ise",
+    "text": "[content]When you don't know what you're doing, it's helpful to begin by learning about what you should not do. ",
+    "ttp_skip": true
+  },
+  "data": {
+    "status": 0
+  }
+}
+#请求数据音频参数（data）
+参数名	类型	必传	描述	示例
+data	string	是	音频数据,base64编码	音频数据,base64编码后作为值
+status	string	是	发送数据的状态
+第一次为0
+中间数据为1
+最后一次为2	根据发送数据的状态改变值
+后续数据发送
+
+{
+  "business": {
+    "cmd": "auw",
+    "aus":1
+  },
+  "data": {
+    "status": 1,
+    "data":"PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4K"
+  }
+}
+
+#返回参数
+#请求数据音频返回参数说明
+返回参数名称	类型	描述
+sid	string	本次会话的id，同一次会话返回的sid相同
+code	int	返回码，0 表示请求成功，遇到其他的错误码时表示请求失败，客户端应该立即断开连接结束会话，
+错误码列表详情见错误码
+message	string	出错时具体的错误描述类型
+data	object	返回的数据
+data.data	string	评测结果，base64字符串，解析后为xml格式
+status	int	返回结果的状态，当status=2时，表示所有结果全部返回，客户端应该以status=2时的结果为最终结果。
+返回示例：
+
+{
+	"code": 0,
+	"message": "success",
+	"sid": "isexxxxxxxxxxxxxxxxxxxxxxxxx",
+	"data": {
+		"status": 2,
+		"data": "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KICA8eG1sX3Jlc3VsdD4KICAgICAgPHJlYWRfc2VudGVuY2UgbGFuPSJjbiIgdHlwZT0ic3R1ZHkiIHZlcnNpb249IjcsMCwwLDEwMjQiPgogICAgICAgICAgPHJlY19wYXBlcj4KICAgICAgICAgICAgICA8cmVhZF9zZW50ZW5jZSBhY2N1cmFjeV9zY29yZT0iMTAwLjAwMDAwMCIgYmVnX3Bvcz0iMCIgY29udGVudD0i5LuK5aSp5aSp5rCU5oCO5LmI5qC344CCIiBlbW90aW9uX3Njb3JlPSI4Ny4zMTUzNjEiIGVuZF9wb3M9IjE1MCIgZXhjZXB0X2luZm89IjAiIGZsdWVuY3lfc2NvcmU9Ijg3LjYyMDMwMCIgaW50ZWdyaXR5X3Njb3JlPSIxMDAuMDAwMDAwIiBpc19yZWplY3RlZD0iZmFsc2UiIHBob25lX3Njb3JlPSIxMDAuMDAwMDAwIiB0aW1lX2xlbj0iMTUwIiB0b25lX3Njb3JlPSIxMDAuMDAwMDAwIiB0b3RhbF9zY29yZT0iOTIuNTExMjAwIj4KICAgICAgICAgICAgICAgICAgPHNlbnRlbmNlIGJlZ19wb3M9IjAiIGNvbnRlbnQ9IuS7iuWkqeWkqeawlOaAjuS5iOagtyIgZW5kX3Bvcz0iMTUwIiBmbHVlbmN5X3Njb3JlPSIwLjAwMDAwMCIgcGhvbmVfc2NvcmU9IjEwMC4wMDAwMDAiIHRpbWVfbGVuPSIxNTAiIHRvbmVfc2NvcmU9IjEwMC4wMDAwMDAiIHRvdGFsX3Njb3JlPSI4Ni45NTk5ODQiPgogICAgICAgICAgICAgICAgICAgICAgPHdvcmQgYmVnX3Bvcz0iMCIgY29udGVudD0i5LuKIiBlbmRfcG9zPSIyMiIgc3ltYm9sPSJqaW4xIiB0aW1lX2xlbj0iMjIiPgogICAgICAgICAgICAgICAgICAgICAgICAgIDxzeWxsIGJlZ19wb3M9IjAiIGNvbnRlbnQ9ImZpbCIgZHBfbWVzc2FnZT0iMzIiIGVuZF9wb3M9IjEiIHJlY19ub2RlX3R5cGU9ImZpbCIgdGltZV9sZW49IjEiPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8cGhvbmUgYmVnX3Bvcz0iMCIgY29udGVudD0iZmlsIiBkcF9tZXNzYWdlPSIzMiIgZW5kX3Bvcz0iMSIgcmVjX25vZGVfdHlwZT0iZmlsIiB0aW1lX2xlbj0iMSI+PC9waG9uZT4KICAgICAgICAgICAgICAgICAgICAgICAgICA8L3N5bGw+CiAgICAgICAgICAgICAgICAgICAgICAgICAgPHN5bGwgYmVnX3Bvcz0iMSIgY29udGVudD0i5LuKIiBkcF9tZXNzYWdlPSIwIiBlbmRfcG9zPSIyMiIgcmVjX25vZGVfdHlwZT0icGFwZXIiIHN5bWJvbD0iamluMSIgdGltZV9sZW49IjIxIj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHBob25lIGJlZ19wb3M9IjEiIGNvbnRlbnQ9ImoiIGRwX21lc3NhZ2U9IjAiIGVuZF9wb3M9IjQiIGlzX3l1bj0iMCIgcGVycl9sZXZlbF9tc2c9IjIiIHBlcnJfbXNnPSIwIiByZWNfbm9kZV90eXBlPSJwYXBlciIgdGltZV9sZW49IjMiPjwvcGhvbmU+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwaG9uZSBiZWdfcG9zPSI0IiBjb250ZW50PSJpbiIgZHBfbWVzc2FnZT0iMCIgZW5kX3Bvcz0iMjIiIGlzX3l1bj0iMSIgbW9ub190b25lPSJUT05FMSIgcGVycl9sZXZlbF9tc2c9IjEiIHBlcnJfbXNnPSIwIiByZWNfbm9kZV90eXBlPSJwYXBlciIgdGltZV9sZW49IjE4Ij48L3Bob25lPgogICAgICAgICAgICAgICAgICAgICAgICAgIDwvc3lsbD4KICAgICAgICAgICAgICAgICAgICAgIDwvd29yZD4KICAgICAgICAgICAgICAgICAgICAgIDx3b3JkIGJlZ19wb3M9IjIyIiBjb250ZW50PSLlpKkiIGVuZF9wb3M9IjQwIiBzeW1ib2w9InRpYW4xIiB0aW1lX2xlbj0iMTgiPgogICAgICAgICAgICAgICAgICAgICAgICAgIDxzeWxsIGJlZ19wb3M9IjIyIiBjb250ZW50PSLlpKkiIGRwX21lc3NhZ2U9IjAiIGVuZF9wb3M9IjQwIiByZWNfbm9kZV90eXBlPSJwYXBlciIgc3ltYm9sPSJ0aWFuMSIgdGltZV9sZW49IjE4Ij4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHBob25lIGJlZ19wb3M9IjIyIiBjb250ZW50PSJ0IiBkcF9tZXNzYWdlPSIwIiBlbmRfcG9zPSIzMCIgaXNfeXVuPSIwIiBwZXJyX2xldmVsX21zZz0iMSIgcGVycl9tc2c9IjAiIHJlY19ub2RlX3R5cGU9InBhcGVyIiB0aW1lX2xlbj0iOCI+PC9waG9uZT4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHBob25lIGJlZ19wb3M9IjMwIiBjb250ZW50PSJpYW4iIGRwX21lc3NhZ2U9IjAiIGVuZF9wb3M9IjQwIiBpc195dW49IjEiIG1vbm9fdG9uZT0iVE9ORTEiIHBlcnJfbGV2ZWxfbXNnPSIxIiBwZXJyX21zZz0iMCIgcmVjX25vZGVfdHlwZT0icGFwZXIiIHRpbWVfbGVuPSIxMCI+PC9waG9uZT4KICAgICAgICAgICAgICAgICAgICAgICAgICA8L3N5bGw+CiAgICAgICAgICAgICAgICAgICAgICA8L3dvcmQ+CiAgICAgICAgICAgICAgICAgICAgICA8d29yZCBiZWdfcG9zPSI0MCIgY29udGVudD0i5aSpIiBlbmRfcG9zPSI1OCIgc3ltYm9sPSJ0aWFuMSIgdGltZV9sZW49IjE4Ij4KICAgICAgICAgICAgICAgICAgICAgICAgICA8c3lsbCBiZWdfcG9zPSI0MCIgY29udGVudD0i5aSpIiBkcF9tZXNzYWdlPSIwIiBlbmRfcG9zPSI1OCIgcmVjX25vZGVfdHlwZT0icGFwZXIiIHN5bWJvbD0idGlhbjEiIHRpbWVfbGVuPSIxOCI+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwaG9uZSBiZWdfcG9zPSI0MCIgY29udGVudD0idCIgZHBfbWVzc2FnZT0iMCIgZW5kX3Bvcz0iNDYiIGlzX3l1bj0iMCIgcGVycl9sZXZlbF9tc2c9IjEiIHBlcnJfbXNnPSIwIiByZWNfbm9kZV90eXBlPSJwYXBlciIgdGltZV9sZW49IjYiPjwvcGhvbmU+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwaG9uZSBiZWdfcG9zPSI0NiIgY29udGVudD0iaWFuIiBkcF9tZXNzYWdlPSIwIiBlbmRfcG9zPSI1OCIgaXNfeXVuPSIxIiBtb25vX3RvbmU9IlRPTkUxIiBwZXJyX2xldmVsX21zZz0iMSIgcGVycl9tc2c9IjAiIHJlY19ub2RlX3R5cGU9InBhcGVyIiB0aW1lX2xlbj0iMTIiPjwvcGhvbmU+CiAgICAgICAgICAgICAgICAgICAgICAgICAgPC9zeWxsPgogICAgICAgICAgICAgICAgICAgICAgPC93b3JkPgogICAgICAgICAgICAgICAgICAgICAgPHdvcmQgYmVnX3Bvcz0iNTgiIGNvbnRlbnQ9IuawlCIgZW5kX3Bvcz0iNzQiIHN5bWJvbD0icWk5IiB0aW1lX2xlbj0iMTYiPgogICAgICAgICAgICAgICAgICAgICAgICAgIDxzeWxsIGJlZ19wb3M9IjU4IiBjb250ZW50PSLmsJQiIGRwX21lc3NhZ2U9IjAiIGVuZF9wb3M9Ijc0IiByZWNfbm9kZV90eXBlPSJwYXBlciIgc3ltYm9sPSJxaTAiIHRpbWVfbGVuPSIxNiI+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwaG9uZSBiZWdfcG9zPSI1OCIgY29udGVudD0icSIgZHBfbWVzc2FnZT0iMCIgZW5kX3Bvcz0iNjYiIGlzX3l1bj0iMCIgcGVycl9sZXZlbF9tc2c9IjEiIHBlcnJfbXNnPSIwIiByZWNfbm9kZV90eXBlPSJwYXBlciIgdGltZV9sZW49IjgiPjwvcGhvbmU+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwaG9uZSBiZWdfcG9zPSI2NiIgY29udGVudD0iaSIgZHBfbWVzc2FnZT0iMCIgZW5kX3Bvcz0iNzQiIGlzX3l1bj0iMSIgbW9ub190b25lPSJUT05FMCIgcGVycl9sZXZlbF9tc2c9IjEiIHBlcnJfbXNnPSIwIiByZWNfbm9kZV90eXBlPSJwYXBlciIgdGltZV9sZW49IjgiPjwvcGhvbmU+CiAgICAgICAgICAgICAgICAgICAgICAgICAgPC9zeWxsPgogICAgICAgICAgICAgICAgICAgICAgPC93b3JkPgogICAgICAgICAgICAgICAgICAgICAgPHdvcmQgYmVnX3Bvcz0iNzQiIGNvbnRlbnQ9IuaAjiIgZW5kX3Bvcz0iODQiIHN5bWJvbD0iemVuMyIgdGltZV9sZW49IjEwIj4KICAgICAgICAgICAgICAgICAgICAgICAgICA8c3lsbCBiZWdfcG9zPSI3NCIgY29udGVudD0i5oCOIiBkcF9tZXNzYWdlPSIwIiBlbmRfcG9zPSI4NCIgcmVjX25vZGVfdHlwZT0icGFwZXIiIHN5bWJvbD0iemVuMyIgdGltZV9sZW49IjEwIj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHBob25lIGJlZ19wb3M9Ijc0IiBjb250ZW50PSJ6IiBkcF9tZXNzYWdlPSIwIiBlbmRfcG9zPSI3OSIgaXNfeXVuPSIwIiBwZXJyX2xldmVsX21zZz0iMSIgcGVycl9tc2c9IjAiIHJlY19ub2RlX3R5cGU9InBhcGVyIiB0aW1lX2xlbj0iNSI+PC9waG9uZT4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHBob25lIGJlZ19wb3M9Ijc5IiBjb250ZW50PSJlbiIgZHBfbWVzc2FnZT0iMCIgZW5kX3Bvcz0iODQiIGlzX3l1bj0iMSIgbW9ub190b25lPSJUT05FMyIgcGVycl9sZXZlbF9tc2c9IjIiIHBlcnJfbXNnPSIwIiByZWNfbm9kZV90eXBlPSJwYXBlciIgdGltZV9sZW49IjUiPjwvcGhvbmU+CiAgICAgICAgICAgICAgICAgICAgICAgICAgPC9zeWxsPgogICAgICAgICAgICAgICAgICAgICAgPC93b3JkPgogICAgICAgICAgICAgICAgICAgICAgPHdvcmQgYmVnX3Bvcz0iODQiIGNvbnRlbnQ9IuS5iCIgZW5kX3Bvcz0iOTMiIHN5bWJvbD0ibWU1IiB0aW1lX2xlbj0iOSI+CiAgICAgICAgICAgICAgICAgICAgICAgICAgPHN5bGwgYmVnX3Bvcz0iODQiIGNvbnRlbnQ9IuS5iCIgZHBfbWVzc2FnZT0iMCIgZW5kX3Bvcz0iOTMiIHJlY19ub2RlX3R5cGU9InBhcGVyIiBzeW1ib2w9Im1lMCIgdGltZV9sZW49IjkiPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8cGhvbmUgYmVnX3Bvcz0iODQiIGNvbnRlbnQ9Im0iIGRwX21lc3NhZ2U9IjAiIGVuZF9wb3M9Ijg4IiBpc195dW49IjAiIHBlcnJfbGV2ZWxfbXNnPSIxIiBwZXJyX21zZz0iMCIgcmVjX25vZGVfdHlwZT0icGFwZXIiIHRpbWVfbGVuPSI0Ij48L3Bob25lPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8cGhvbmUgYmVnX3Bvcz0iODgiIGNvbnRlbnQ9ImUiIGRwX21lc3NhZ2U9IjAiIGVuZF9wb3M9IjkzIiBpc195dW49IjEiIG1vbm9fdG9uZT0iVE9ORTAiIHBlcnJfbGV2ZWxfbXNnPSIxIiBwZXJyX21zZz0iMCIgcmVjX25vZGVfdHlwZT0icGFwZXIiIHRpbWVfbGVuPSI1Ij48L3Bob25lPgogICAgICAgICAgICAgICAgICAgICAgICAgIDwvc3lsbD4KICAgICAgICAgICAgICAgICAgICAgIDwvd29yZD4KICAgICAgICAgICAgICAgICAgICAgIDx3b3JkIGJlZ19wb3M9IjkzIiBjb250ZW50PSLmoLciIGVuZF9wb3M9IjE1MCIgc3ltYm9sPSJ5YW5nNCIgdGltZV9sZW49IjU3Ij4KICAgICAgICAgICAgICAgICAgICAgICAgICA8c3lsbCBiZWdfcG9zPSI5MyIgY29udGVudD0i5qC3IiBkcF9tZXNzYWdlPSIwIiBlbmRfcG9zPSIxMTIiIHJlY19ub2RlX3R5cGU9InBhcGVyIiBzeW1ib2w9Inlhbmc0IiB0aW1lX2xlbj0iMTkiPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8cGhvbmUgYmVnX3Bvcz0iOTMiIGNvbnRlbnQ9Il9pIiBkcF9tZXNzYWdlPSIwIiBlbmRfcG9zPSI5NiIgaXNfeXVuPSIwIiBwZXJyX2xldmVsX21zZz0iMSIgcGVycl9tc2c9IjAiIHJlY19ub2RlX3R5cGU9InBhcGVyIiB0aW1lX2xlbj0iMyI+PC9waG9uZT4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHBob25lIGJlZ19wb3M9Ijk2IiBjb250ZW50PSJpYW5nIiBkcF9tZXNzYWdlPSIwIiBlbmRfcG9zPSIxMTIiIGlzX3l1bj0iMSIgbW9ub190b25lPSJUT05FNCIgcGVycl9sZXZlbF9tc2c9IjEiIHBlcnJfbXNnPSIwIiByZWNfbm9kZV90eXBlPSJwYXBlciIgdGltZV9sZW49IjE2Ij48L3Bob25lPgogICAgICAgICAgICAgICAgICAgICAgICAgIDwvc3lsbD4KICAgICAgICAgICAgICAgICAgICAgICAgICA8c3lsbCBiZWdfcG9zPSIxMTIiIGNvbnRlbnQ9InNpbCIgZHBfbWVzc2FnZT0iMCIgZW5kX3Bvcz0iMTUwIiByZWNfbm9kZV90eXBlPSJzaWwiIHRpbWVfbGVuPSIzOCI+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwaG9uZSBiZWdfcG9zPSIxMTIiIGNvbnRlbnQ9InNpbCIgZW5kX3Bvcz0iMTUwIiB0aW1lX2xlbj0iMzgiPjwvcGhvbmU+CiAgICAgICAgICAgICAgICAgICAgICAgICAgPC9zeWxsPgogICAgICAgICAgICAgICAgICAgICAgPC93b3JkPgogICAgICAgICAgICAgICAgICA8L3NlbnRlbmNlPgogICAgICAgICAgICAgIDwvcmVhZF9zZW50ZW5jZT4KICAgICAgICAgIDwvcmVjX3BhcGVyPgogICAgICA8L3JlYWRfc2VudGVuY2U+CiAgPC94bWxfcmVzdWx0Pg=="
+	}
+}
+#中文评测返回参数说明
+题型	节点	字段信息
+字、词题型（小学、成人）	read_syllable
+或者
+read_word	phone_score：声韵分
+tone_score：调型分
+total_score：总分 【（phone_score + tone_score）/2】
+字、词题型（小学、成人）	sentence	无重要信息
+字、词题型（小学、成人）	word	无重要信息
+字、词题型（小学、成人）	syll	dp_message：0正常；16漏读；32增读；64回读；128替换；
+字、词题型（小学、成人）	phone	dp_message：0正常；16漏读；32增读；64回读；128替换（当dp_message不为0时，perr_msg可能出现与dp_message值保持一致的情况）；
+mono_tone：调型
+perr_level_msg：返回检错结果的置信度（共1,2,3三个数值，1最好，3最差。如果出现为0的情况可以不考虑）
+is_yun：0声母，1韵母：
+当is_yun=0时：perr_msg有两种状态：0 声母正确 ；1 声母错误
+当is_yun=1时：perr_msg有四种状态：0韵母和调型均正确1韵母错误；2调型错误；3韵母和调型均错误；
+句篇题型（小学）	read_sentence 或者 read_chapter	accuracy_score：准确度
+emotion_score：整体印象分（朗读是否清晰流畅，是否富有感情等）
+fluency_score：流畅度分
+integrity_score：完整度分
+phone_score：声韵分
+tone_score：调型分
+total_score：总分【总分 = 准确度分*0.4 + 流畅度分*0.4 + 整体印象分*0.2】
+句篇题型（小学）	sentence	phone_score：声韵分
+tone_score：调型分
+total_score：总分【模型回归】
+句篇题型（小学）	word	无重要信息
+句篇题型（小学）	syll	dp_message：0正常；16漏读；32增读；64回读；128替换；
+句篇题型（小学）	phone	dp_message：0正常；16漏读；32增读；64回读；128替换（当dp_message不为0时，perr_msg可能出现与dp_message值保持一致的情况）；
+mono_tone：调型
+perr_level_msg：返回检错结果的置信度（共1,2,3三个数值，1最好，3最差。如果出现为0的情况可以不考虑）
+is_yun：0声母，1韵母：
+当is_yun=0时：perr_msg有两种状态：0 声母正确 ；1 声母错误
+当is_yun=1时：perr_msg有四种状态：0韵母和调型均正确1韵母错误；2调型错误；3韵母和调型均错误；
+句篇题型（成人）	read_sentence 或者 read_chapter	fluency_score：流畅度分
+integrity_score：完整度分
+phone_score：声韵分
+tone_score：调型分
+total_score：总分【模型回归】
+句篇题型（成人）	sentence	phone_score：声韵分
+tone_score：调型分
+total_score：总分【模型回归】
+句篇题型（成人）	word	无重要信息
+句篇题型（成人）	syll	dp_message：0正常；16漏读；32增读；64回读；128替换；
+句篇题型（成人）	phone	dp_message：0正常；16漏读；32增读；64回读；128替换（当dp_message不为0时，perr_msg可能出现与dp_message值保持一致的情况）；
+mono_tone：调型
+perr_level_msg：返回检错结果的置信度（共1,2,3三个数值，1最好，3最差。如果出现为0的情况可以不考虑）
+is_yun：0声母，1韵母：
+当is_yun=0时：perr_msg有两种状态：0 声母正确 ；1 声母错误
+当is_yun=1时：perr_msg有四种状态：0韵母和调型均正确1韵母错误；2调型错误；3韵母和调型均错误；
+#英文评测返回参数说明
+题型	节点	字段信息
+单词题型（成人）	read_word	【成人单词】total_score：总分【模型回归】
+单词题型（成人）	sentence	无重要信息
+单词题型（成人）	word	dp_message：0正常；16漏读；32增读；64回读；128替换；
+total_score：每个词的分
+单词题型（成人）	syll	syll_score：每个音节的得分
+serr_msg：音节检错【1或者2049，则表示朗读错误；当serr_msg=2049时，表示音节和重音皆错】
+syll_accent：重读检错【如果为0，表明该音节无需重读，引擎也不做检测；为1，表明该音节需要重读，同时再去解析serr_msg，如果为2048或者2049，则表示朗读错误，效果优化中，可以不关注此情况】
+单词题型（成人）	phone	dp_message：0正常；16漏读；32增读；64回读；128替换；
+句子、篇章题型（成人）	read_sentence 或者 read_chapter	accuracy_score：准确度分
+standard_score：标准度分
+fluency_score：流利度分
+integrity_score：完整度分
+【成人句子】
+total_score：总分 = (0.6*accuracy_score + fluency_score*0.3 + standard_score*0.1)* integrity_score/100
+【成人篇章】
+total_score：总分 = (0.5*accuracy_score + fluency_score*0.3 + standard_score*0.2)* integrity_score/100
+句子、篇章题型（成人）	sentence	accuracy_score：准确度分
+standard_score：标准度分
+fluency_score：流利度分
+【成人句子】
+total_score：总分 = (0.6*accuracy_score + fluency_score*0.3 + standard_score*0.1)
+【成人篇章】
+total_score：总分 = (0.5*accuracy_score + fluency_score*0.3 + standard_score*0.2)
+句子、篇章题型（成人）	word	dp_message：0正常；16漏读；32增读；64回读；128替换；
+total_score：每个词的分
+停顿、连读、重读、句末升降调检错：
+1. 将xml中word层property值的2进制与右表中Property值的2进制进行与运算。（效果优化中，无需关注）
+2. 如果运算结果与上表Property值相等，说明此处进行了该类型的检测。若运算结果与上表Property值不等，则说明这里未进行任何检测。（效果优化中，无需关注）
+3. 判断xml中word层是否出现werr_msg,若未出现，说明朗读正确。（效果优化中，无需关注）
+4. 若出现，则将xml中werr_msg的值与上表Werr_msg对应的值进行与运算，若仍等于该类型的值，则说明该类型朗读错误。（效果优化中，无需关注）
+句子、篇章题型（成人）	syll	syll_score：每个音节的得分
+serr_msg：音节检错【1或者2049，则表示朗读错误，效果优化中，可以不关注此情况】
+句子、篇章题型（成人）	phone	dp_message：0正常；16漏读；32增读；64回读；128替换；
+情景反应	rec_paper	total_score：总分【模型回归】
+故事复述-topic	rec_paper	total_score：总分【模型回归】
+复述题、口头翻译、要点题、看图说话	rec_paper	accuracy_score：准确度分
+standard_score：标准度分
+fluency_score：流利度分
+integrity_score：完整度分
+total_score：总分【模型回归】
+口头作文	rec_paper	total_score：总分【模型回归】
+#试题格式说明
+#中文试题格式说明
+#中文字（read_syllable）
+纯文本示例：
+（1）不需带任何头，不含任何节点名
+（2）试卷可以包含的内容：简体汉字、繁体汉字（gbk范围内）、0-9阿拉伯数字（不建议使用）、分隔符。
+（3）分隔符在两个字之间使用，行首与行尾不要出现汉字、空格之外的其它字符。
+（4）试卷内容可包含0-9阿拉伯数字，但不支持试卷内容全是阿拉伯数字。两位数以上的数值及数字串（如年份，电话号码，时间等）要求使用中文数字表示。
+（5）单行汉字个数不要超过100个。
+
+丰，呈，政
+拼音标注示例：
+（1）字与字之间使用换行符进行分隔。
+（2）ü除了lü和nü用lv和nv表示（如：女：nv3）其他用u表示，如局（ju2）。üe用ue表示，如：略（lue4）。
+（3）拼音需是字典中正确的拼音，调型在0-9之间取值，其中0/5/6/7/8/9均代表轻声。
+（4）汉字部分不要出现阿拉伯数字。
+（5）有拼音试卷中每个字都必须给出标注拼音。
+
+<customizer: interphonic>
+好
+hao3
+呈   
+cheng2   
+注：试卷文本总汉字数范围 (0,200]，总字符数范围(0,5000]，推荐文本汉字数范围(0,100]，推荐字符数(0,200]。
+
+#中文词语（read_word）
+纯文本示例：
+（1）试卷可以包含的内容：简体汉字、繁体汉字（gbk范围内）、0-9阿拉伯数字（不建议使用）、分隔符。
+（2）分隔符在两个词之间使用，行首与行尾不要出现汉字、空格之外的其它字符。
+（3）试卷内容可包含0-9阿拉伯数字，但不支持试卷内容全是阿拉伯数字。两位数以上的数值及数字串（如年份，电话号码，时间等）要求使用中文数字表示。
+（4）单行汉字个数不要超过100个。
+
+宁可，非难
+拼音标注示例：
+（1）词与词之间使用换行符进行分隔。
+（2）试卷可以包含的内容：简体汉字、拼音、拼音分隔符（|）。
+（3）拼音需是字典中正确的拼音，调型在0-9之间取值，其中0/5/6/7/8/9均代表轻声。
+（4）单个词里面字与字的拼音之间使用“|”符号分隔。
+（5）汉字部分不要出现阿拉伯数字。
+（6）有拼音试卷中每个字都必须给出标注拼音。
+
+<customizer: interphonic>
+宁可     
+ning4|ke3    
+非难    
+fei1|nan4
+注：试卷文本总汉字数范围 (0,200]，总字符数范围(0,5000]，推荐文本汉字数范围(0,100]，推荐字符数(0,200]。
+
+#中文句子（read_sentence）
+纯文本示例：
+（1）试卷可以包含的内容：简体汉字、繁体汉字（gbk范围内）、0-9阿拉伯数字（不建议使用）、分隔符。
+（2）试卷内容可包含0-9阿拉伯数字，但不支持试卷内容全是阿拉伯数字。两位数以上的数值及数字串（如年份，电话号码，时间等）要求使用中文数字表示。
+（3）一句话中汉字个数不要超过100个。
+
+这是中文语句评测示例。 
+拼音标注示例：
+（1）句与句之间使用换行符进行分隔。
+（2）试卷可以包含的内容：简体汉字、拼音、拼音分隔符（|）。
+（3）试卷中不要出现阿拉伯数字、英文单词、英文字母。
+（4）拼音需是字典中正确的拼音，调型在0-9之间取值，其中0/5/6/7/8/9均代表轻声。
+（5）句子中的拼音与拼音之间使用“|”符号分隔。
+（6）单行汉字个数不要超过100个。
+（7）有拼音试卷中每个字都必须给出标注拼音。
+
+<customizer: interphonic>
+今天天气怎么样
+jin1|tian1|tian1|qi4|zen3|me5|yang4
+注：文本总汉字数范围 (0,1000],总字符数范围(0,10000],推荐文本汉字数范围[5,500]，推荐字符数(0,1000]。
+
+#中文篇章（read_chapter）
+纯文本示例（与句子试卷一样，只不过篇章是由多个句子组成，注意事项请参考句子试卷说明）：
+
+这是中文语句评测示例。 
+拼音标注示例：
+
+<customizer: interphonic>
+今天天气怎么样
+jin1|tian1|tian1|qi4|zen3|me5|yang4
+#英文试题格式说明
+#英文单词（read_word）
+普通文本：
+（1）必要节点：[word]，注意使用换行符进行分隔。
+（2）单词数量不要超过100个。
+（3）单词分词只支持tab键、enter换行键、空格键。
+（4）单词可支持的符号：英文半角字符 . - ‘ (即点号、连字符、上单引号)，如p.m和year-old可支持，hello,world不支持。
+（5）单词不支持的标点符号：问号、感叹号、分号、冒号、逗号以及非法字符（ ） [ 。
+（6）不要将标点符号单独作为一个单词 写在试卷中（即标点符号两端都是空格），标注会报错。
+
+[word]
+apple
+banana
+数字读法标注：
+（1）在数字下一行必须用[number_replace]标记。
+（2）在[number_replace]的下一行，以“数字/读法/”这种格式标注，注意符号/个数必须为2，且//中内容不可以加符号。
+
+[word]
+13
+[number_replace]
+13/thirteen/
+注：[word]节点内容，禁止出现与单词内容无关的任何字符，影响效果。
+
+英文用户自定义音标:
+用户可以在这个节点中添加自己定义的音标，引擎评测的时候就会按照用户添加的音标进行评测，而不考虑该单词的真正读音是什么。需要注意的是，在添加自定义音标时需确保是正确的讯飞音标，非任意音标；并且不建议在该节点下面自定义数字的音标。
+（1）单个单词符号/个数不为2报错；
+（2）单词音标为空报错（//）；
+（3）单个音标字节数超过128*6字节报错；
+（4）多音标可以竖线“|”分隔开；
+（5）目前该节点暂无符号检错功能，故//中内容可以加符号，但建议不使用除竖线及上单引号之外的符号；
+
+[word]
+lose 
+[vocabulary]
+lose/l uw z/
+#英文句子（read_sentence）
+普通文本：
+（1）必要节点：[content]，注意使用换行符进行分隔。
+（2）内容可以用这用四个英文半角字符 . ! ? ； 进行分句。
+（3）文本前面和中间不要出现（ ） [ 这三个符号。
+（4）文本末尾不能出现 [ 这个字符 ，可以只有一个（ 或者 ），不可以出现多个（ 或者 ）。
+（5）可支持全角字符（一个全角字符占两个字节,引擎先转全角到半角），占整个content节点内容字节数的大小不得超过10%。
+（6）不支持字符占整个content节点内容字节数的大小不得超过10%，常见不支持的字符如：@ , # , $ , % , & , * , { , }。
+（7）每句单词数不能超过100个，每句字节数不能超过1024个字节（分句符号也算作一个字节）。
+（8）所有单词数不超过1000个。
+
+[content]
+This is an example of sentence test.
+带可支持英文半角字符：
+
+[content]
+I don't know.
+数字读法标注：
+（1）单个单词中符号/个数不为2报错。
+（2）数字多种读法以竖线“|”分隔表示。
+（3）内容必须为小写字母。
+（4）最大替换数字长度不要超过31个。
+
+[content]
+I’m 13 years old.
+[number_replace]
+13/thirteen/
+注：若无特殊需求，禁止在content文本中添加任何与试卷内容无关的信息，禁止对单词作改动（比如long到l-o-n-g），会对评分产生影响。
+
+句子题型非必要节点说明：
+（1）关于[number_replace]，单个单词中符号/个数不为2报错。
+（2）关于[number_replace]，替换内容为空报错（//）。
+（3）关于[number_replace]，数字多种读法以竖线“|”分隔表示。
+（4）关于[number_replace]，内容必须为小写字母。
+（5）关于[number_replace]，最大替换数字长度不要超过31个。
+（6）关于[vocabulary]，单个单词符号/个数不为2报错。
+（7）关于[vocabulary]，单词音标为空报错（//）。
+（8）关于[vocabulary]，单个音标字节数超过128*6字节报错。
+（9）关于[vocabulary]，多音标可以竖线分隔开。
+
+英文用户自定义音标：
+（1）单个单词符号/个数不为2报错；
+（2）单词音标为空报错（//）；
+（3）单个音标字节数超过128*6字节报错；
+（4）多音标可以竖线分隔开；
+（5）建议//中内容不加符号；
+
+[content]
+I lose my pencil today. 
+[vocabulary]
+lose/l uw z/
+标记需要用讯飞音频，音标对照表请参考下方：
+
+讯飞音标	标准音标	讯飞音标	标准音标
+aa	ɑː	f	f
+ae	æ	g	g
+ah	ʌ	hh	h
+ao	ɔː	jh	dʒ
+ar	eə	k	k
+aw	aʊ	l	l
+ax	ə	m	m
+ay	aɪ	n	n
+eh	e	ng	ŋ
+er	ɜː	p	p
+ey	eɪ	r	r
+ih	ɪ	s	s
+ir	ɪə	sh	ʃ
+iy	iː	t	t
+oo	ɒ	th	θ
+ow	əʊ	v	v
+oy	ɒɪ	w	w
+uh	ʊ	y	j
+uw	uː	z	z
+ur	ʊə	zh	ʒ
+b	b	dr	dr
+ch	tʃ	dz	dz
+d	d	tr	tr
+dh	ð	ts	ts
+#英文篇章（read_chapter）
+试卷示例：
+（1）必要节点：[content]，注意使用换行符进行分隔。
+（2）内容可以用这用四个英文半角字符 . ! ? ； 进行分句。
+（3）文本前面和中间不要出现（ ） [ 这三个符号。
+（4）文本末尾不能出现 [ 这个字符 ，可以只有一个（ 或者 ），不可以出现多个（ 或者 ）。
+（5）可支持全角字符（一个全角字符占两个字节,引擎先转全角到半角），占整个content节点内容字节数的大小不得超过10%。
+（6）不支持字符占整个content节点内容字节数的大小不得超过10%，常见不支持的字符如：@ , # , $ , % , & , * , { , }。
+（7）每句单词数不能超过100个，每句字节数不能超过1024个字节（分句符号也算作一个字节）。
+（8）所有单词数不超过1000个。
+（9）文本中不要添加无意义的字符组合，例如数字，字母与符号的各种组合，比如7FH34J。
+
+[content]
+Hello,everybody.This is an example of chapter test.
+注：若无特殊需求，禁止在content文本中添加任何与试卷内容无关的信息，禁止对单词作改动（比如long到l-o-n-g），会对评分产生影响。
+
+#英文情景反应（simple_expression）
+试卷示例：
+（1）必要节点：[choice]、[keywords]，注意使用换行符进行分隔。
+（2）采用英文半角字符,.!?；五个进行分句。
+（3）各选项序号要连续，且序号和内容之间以“序号+点号+空格+内容”方式书写。
+（4）任一选项需一行显示，倘若某一选项内容手动换行（系统自动换行除外），导致第二行无序号，则报错。
+（5）每个choice选项文本前面，中间不要出现（ ） [ 这三个字符，会报错。
+（6）每个choice选项文本末尾 可以 出现一个（或者），不能出现多个（ 或者 ）。
+（7）如果要在每个choice选项内容中加入全角字符， 确保其占每个choice节点内容字节数的大小不能超过10%。
+（8）如果要在每个choice选项中输入不支持字符，确保其占每个choice节点内容字节数的大小不能超过10%，常见不支持字符有：@ , # , $ , % , ^, & , * , + , = , { , }。
+（9）每个choice选项除符号外单词数量不可以超过100。
+（10）若无特殊需求，禁止在每个choice选项内容中加入任何与内容无关的字符，包括序号，数字，任意字符等，上述操作会对标注及评分产生影响。
+
+[choice]
+1. What should I do with the topic?
+2. How can I deal with the topic?
+3. What can I do with the topic?
+4. What should I do with this subject?
+5. How can I deal with this subject?
+6. What can I do with this subject?
+7. What should I do with this title?
+8. How can I deal with this title?
+9. What can I do with this title?
+10. What should I manage this title?
+11. How can I manage this title?
+12. What can I manage this title?
+13. What should I manage this subject?
+14. How can I manage this subject?
+15. What should I manage this topic?
+16. How can I manage this topic?
+17. What can I manage this topic?
+18. How should I deal with this topic?
+19. How should I deal with this title?
+20. How should I deal with this subject?
+[keywords]
+what do topic | how deal topic | what do subject | how deal subject | what do title | how deal title | what manage title | how manage title | what manage subject | how manage subject | what manage topic | how manage topic
+[script]
+W: Congratulations, Tom! You gave a wonderful speech yesterday morning.
+M: Thank you Mary.
+W: I will give a speech next Wednesday in my English class, but I am not fully prepared yet. Can you give me some advice?
+M: Sure. What's your topic?
+W: Well, I am always concerned about environmental issues, so my topic is Environmental Protection.
+M: This is a good topic, but it is too big.
+[question]
+我该如何处理这个题目？
+[macanswer]
+You have to narrow down your topic. For example, you may talk about what college students can do to protect our environment. After that, you need to do some research to collect relevant information as much as possible. Then, you should organize your arguments well. Logical organization is very important.
+#英文选择题（read_choice）
+试卷示例：
+（1）必要节点：[choice]、[keywords]，注意使用换行符进行分隔。
+（2）采用英文半角字符,.!?；五个进行分句。
+（3）各选项序号要连续，且序号和内容之间以“序号+点号+空格+内容”方式书写。
+（4）任一选项需一行显示，倘若某一选项内容换行，导致第二行无序号，则报错。
+（5）每个choice选项可支持全角字符占整个choice节点内容字节数的大小不能超过10%。
+（6）每个choice选项不支持字符占整个choice节点内容字节数的大小不能超过10%。
+（7）keywords内容必须是choice选项之一，与正确选项内容必须完全连续匹配，缺少内容不可（与情景反应题型choice节点限制不同）。
+（8）单个选项答案可采用五个英文半角字符,.!?；进行分句，多个答案可以竖线|分隔。
+（9）每个choice选项除符号外单词数量不可以超过100。
+
+[choice]
+1. Snakes.
+2. Children.
+3. Cats.
+[keywords]
+cats
+[question]
+What did the woman dislike?
+#英文自由题（topic）
+试卷示例：
+（1）必要节点：[topic]，注意使用换行符进行分隔。
+（2）第一行为复述主题题目，必须按以下方式书写：“序号+点号+空格+内容”方式书写，如1. +题目，必须从1开始按顺序连续；注意必须是空格，不能是tab键或者其他字符，题目中不要出现（ ） [ 这三个字符，另外也不要在题目中出现全角字符 , 标注会出错。
+（3）第二行为复述主题内容，也必须以下方式书写：“序号+点号+空格+内容”方式书写，如1.1. +内容，必须从1.1.开始；注意必须是空格，不能是tab键或者其他字符。
+（4）如果有多个主题内容，序号id必须连续，按照1.1. , 1.2. , 1.3. 这种方式。
+（5）采用英文半角字符,.!?；五个进行分句。
+（6）任一选项需一行显示，倘若某一选项内容手动换行（系统自动换行除外），导致第二行无序号，则报错。
+（7）非必要节点： [number_replace]、[vocabulary]规范说明参见句子题型非必要节点限制。
+
+[topic]
+1. The Goose Thief
+1.1.  Tom went to primary school in the countryside. Near his classroom, there was a small pond where two geese were raised. Students were all fond of them. One day, when Tom passed the school kitchen, he heard the cooks talking about killing the geese for the teachers' Christmas dinner. Tom got angry, and said to himself, "I won't let them be eaten!" That night, Tom worked out a plan. He was going to hide them somewhere far away from the school. The next morning, Tom went to school in his father's big coat. During the break, he rushed to the pond. Without anyone around, he caught the geese and pushed them inside the coat. However, the geese were larger than he had thought, and they tried very hard to free themselves from the coat. The big noise caught the notice of the head teacher and the students, and they all ran to the pond. The head teacher asked for an explanation. Looking at the teacher with fear, Tom told the story and said, "It is unfair to them. We all love them!" The head teacher smiled and promised not to have them killed for the Christmas dinner.
+[keypoint]
+1. Tom went to primary school in the countryside. Near his classroom, there was a small pond where two geese were raised.
+2. Students were all fond of them.
+3. One day, when Tom passed the school kitchen, he heard the cooks talking about killing the geese for the teachers' Christmas dinner.
+4. Tom got angry, and said to himself, "I won't let them be eaten!" That night, Tom worked out a plan. He was going to hide them somewhere far away from the school.
+5. The next morning, Tom went to school in his father's big coat. During the break, he rushed to the pond. Without anyone around, he caught the geese and pushed them inside the coat.
+6. However, the geese were larger than he had thought, and they tried very hard to free themselves from the coat. The big noise caught the notice of the head teacher and the students,
+7. They all ran to the pond.
+8. The head teacher asked for an explanation.
+9.  Looking at the teacher with fear, Tom told the story and said, "It is unfair to them. We all love them!"
+10. The head teacher smiled and promised not to have them killed for the Christmas dinner.
+#英文复述题（retell）
+试卷示例：
+（1）必要节点：[topic] 、[keypoint]，注意使用换行符进行分隔。
+（2）第一行为复述主题题目，必须按以下方式书写：“序号+点号+空格+内容”方式书写，如1. +题目，必须从1开始按顺序连续；注意必须是空格，不能是tab键或者其他字符，题目中不要出现 （ ） [ 这三个字符，另外也不要在题目中出现全角字符 , 标注会出错。
+（3）第二行为复述主题内容，也必须以下方式书写：“序号+点号+空格+内容”方式书写，如1.1. +内容，必须从1.1.开始；注意必须是空格，不能是tab键或者其他字符。
+（4）如果有多个主题内容，序号id必须连续，按照1.1. , 1.2. , 1.3. 这种方式。
+（5）采用英文半角字符,.!?；五个进行分句。
+（6）任一选项需一行显示，倘若某一选项内容手动换行（系统自动换行除外），导致第二行无序号，则报错。
+（7）非必要节点： [number_replace]、[vocabulary]规范说明参见句子题型非必要节点限制。
+
+[topic]
+1. The Goose Thief
+1.1.  Tom went to primary school in the countryside. Near his classroom, there was a small pond where two geese were raised. Students were all fond of them. One day, when Tom passed the school kitchen, he heard the cooks talking about killing the geese for the teachers' Christmas dinner. Tom got angry, and said to himself, "I won't let them be eaten!" That night, Tom worked out a plan. He was going to hide them somewhere far away from the school. The next morning, Tom went to school in his father's big coat. During the break, he rushed to the pond. Without anyone around, he caught the geese and pushed them inside the coat. However, the geese were larger than he had thought, and they tried very hard to free themselves from the coat. The big noise caught the notice of the head teacher and the students, and they all ran to the pond. The head teacher asked for an explanation. Looking at the teacher with fear, Tom told the story and said, "It is unfair to them. We all love them!" The head teacher smiled and promised not to have them killed for the Christmas dinner.
+[keypoint]
+1. Tom went to primary school in the countryside. Near his classroom, there was a small pond where two geese were raised.
+2. Students were all fond of them.
+3. One day, when Tom passed the school kitchen, he heard the cooks talking about killing the geese for the teachers' Christmas dinner.
+4. Tom got angry, and said to himself, "I won't let them be eaten!" That night, Tom worked out a plan. He was going to hide them somewhere far away from the school.
+5. The next morning, Tom went to school in his father's big coat. During the break, he rushed to the pond. Without anyone around, he caught the geese and pushed them inside the coat.
+6. However, the geese were larger than he had thought, and they tried very hard to free themselves from the coat. The big noise caught the notice of the head teacher and the students,
+7. They all ran to the pond.
+8. The head teacher asked for an explanation.
+9.  Looking at the teacher with fear, Tom told the story and said, "It is unfair to them. We all love them!"
+10. The head teacher smiled and promised not to have them killed for the Christmas dinner.
+#英文看图说话（picture_talk）
+试卷示例：
+（1）必要节点：[topic]，注意使用换行符进行分隔。规范说明参见故事复述题型必要节点中的 [topic] 限制。
+（2）非必要节点：[number_replace]、[vocabulary]规范说明参见句子题型非必要节点限制。
+（3）关于非必要节点[keypoint]，各选项序号要连续，且序号和内容之间以“序号+点号+空格+内容”方式书写。
+（4）关非必要节点于[keypoint]，如果keypoint节点下面存在多个选项，选取其中一个选项的内容进行切分即可。
+
+[topic]
+1. Throw Litter
+1.1. Mary and her classmates went outing last weekend. Someone was flying kites, some people were having snacks. There were litters on the road. Mary picked up the waste bottles and paper the put them in the dustbin. The teacher praised Mary for her good deed.
+1.2. Last weekend, Mary went to the park with her classmates. They had a picnic in the park. Some people flew kites there. They had great fun there. Mary saw some rubbish on the road. She picked up the rubbish and threw it into the dustbin. The teacher praised Mary.
+1.3. Last Saturday, Mary's class went to the park. They brought some food and had a picnic on the grass. After that, they flew kites there. Suddenly, Mary found that there was some rubbish on the road. She then picked up the rubbish and threw it into the dustbin. Mary's teacher saw this. She said "Well done" to Mary. Mary was very happy.
+1.4. Mary went to the park with her friend last weekend. They had a picnic there, while some people were flying kites. Mary's friend wanted to fly a kite too. So she threw waste bottles and paper on the ground and ran away. Mary saw this and picked up the rubbish. Then she threw it into the garbage can. A woman noticed what Mary had done. She praised Mary for her good behavior.
+1.5. Mary went to the park to have a picnic with her friend last Sunday. They brought some juice and bread as lunch. After lunch, they joined other people to fly kites. Mary saw some waste bottles and paper on the ground. Someone threw them away after having a picnic. Mary cleaned the road, putting the garbage into a garbage can. A lady saw this and praised Mary for what she had done.
+1.6. Last weekend, Mary and her classmates went to the park. Some of them flew kites, and some of them had food on the grass. Mary brought some juice, bread and biscuits to share with her friend. After they finished eating, her friend went to fly a kite. Mary gathered their waste bottles and paper and was about to threw them into the dustbin. Suddenly, she saw some garbage on the ground. She picked up the garbage, and threw it away with their waste bottles and paper. Her good behavior was noticed by the manager of the park. The manager praised her.
+1.7. Last weekend, Mary went outing with her classmates. Mary and her friend were having drinks and some bread. Others were flying kites or playing games. After a while, there were litters on the ground. Mary saw these and started to pick up all the waste paper and bottles. She put them into the dustbin. Mary's teacher praised her for what she had done.
+1.8. Mary went for an outing with her classmates last weekend. Some people played games and some people went to fly kites. Mary and Lily were having some snacks. When they were about to play, Mary noticed that there were litters around them. So she picked up the waste bottles and paper and threw them in the dustbin. Just then, her teacher saw it and praised Mary for what she did.
+1.9. The school held an outing last weekend. Mary and her classmates had fun there. Some people were playing games while some were flying kites. Mary and one of her classmates were having some snacks. Then, Mary found that there were some waste paper and bottles on the ground. So she threw all of them into the dustbin. At last, the ground became clean and Mary was praised by her teacher.
+1.10. Mary and her classmates went for an outing last weekend. They were very happy. Someone was flying kites, some were having food. After having lunch, they went on playing games. Mary noticed that there were some litters on the ground. So she picked up all the litters and then put them in the dustbin. Mary's good deed was saw by her teacher. The teacher praised Mary and felt proud of what she had done.
+1.11. Last Saturday, Mary's teacher took her class to an outing. The whole class were very happy then. Some people were flying kites while some were playing games. At lunch time, they had food and drank juice together. After that, there were some waste bottles and paper on the road. Mary started to pick them up and threw them into the dustbin. Her teacher saw it and spoke highly of what Mary had done. Mary felt very proud of herself.
+1.12. Last weekend Mary and her classmates went outing and had a picnic. Some people were flying kites, some people were having snacks. Suddenly, they found there was a lot of litter on the road. Mary picked up the waste bottles and paper the put them in the dustbin. The teacher praised Mary for her good behavior.
+1.13. Last weekend Mary went to the park with Some friends. Some of them were flying kites. Some friends were eating food. Suddenly, they saw there was some rubbish on the road. Mary picked up the rubbish and put it into the garbage. The teacher said Mary was good.
+1.14.  Last weekend Mary went to the park. Some classmates were flying kites, some classmate were eating food. Suddenly, they saw there was a lot of rubbish on the road. Mary picked up the rubbish and put it into the dustbin. The teacher said Mary was a good girl.
+1.15.  Last weekend Mary had a picnic with her cousins in the park. Some were flying kites, some were eating food. They saw there was some litter on the road. Mary picked up the litter and threw it into the dustbin. Her mother said Mary was good.
+1.16.  Last weekend Mary had a picnic with her cousins in the park. Some flew kites, some ate food. Suddenly, they saw someone dropped a lot of litter on the road. Mary picked up the litter and threw it into the dustbin. Her mother said Mary did a good job.
+1.17.  Last weekend, Mary went to the park for a picnic with her friend. They brought a lot of food and enjoyed it very much. Lily went to fly kite but she left many rubbish on the ground. Marry cleaned it and put it into the rubbish can. The teacher saw it and she said to Marry, "you are a good girl." What a good girl!
+#英文口头翻译（oral_translation）
+试卷示例：
+（1）必要节点：[topic]，注意使用换行符进行分隔。规范说明参见故事复述题型必要节点中的 [topic] 限制。
+（2）非必要节点： [number_replace]、[vocabulary]规范说明参见句子题型非必要节点限制、[keypoint]规范参见英文看图说话题型非必要节点限制。
+
+[topic]
+1. British People
+1.1.  British people usually say "hello" or "nice to meet you" and shake your hand when they meet you for the first time. They behave politely in public. They think it's rude to push in before others. They always queue. They are very polite at home as well. When in Rome, do as the Romans do. When we are in a strange place, we should do as the local people do.
+1.2. For the first meeting, the English will usually say "hello" or "nice to meet you" and shake hands with you. In the public places, they behave themselves well； they think that jumping in the line is a rude behavior, so they always line up. They are often very polite at home. When we are in a strange place, do in Rome as Rome does. We should behave well as local people.
+1.3. When they meet for the first time, the British usually say "hello" or "nice to meet you", and shake hands with each other. In public, they behave themselves appropriately. They think it is impolite to jump the queue, and they always wait in line patiently for their turns. They are also very polite at home. As the saying goes, "when in Rome, do as the Romans do". When we are in a strange place, we should act as the locals do.
+1.4. When first meet, English are likely to say "hello" or "nice to meet you" and shake hands with you. They behave well in public. They usually line up because they think queue jumping is very impolite. And they are also very polite at home. There is an old saying "Do in Rome as Rome does". So when we are in a new place, we should behave ourselves as the locals do.
+1.5. When meeting for the first time, Englishmen usually say "hello" or "nice to meet you" with a handshake. They behave themselves well in public places. They regard jumping a queue as one of the rude behavior, so they always queue up. They are also very polite at home. When in Rome, do as the Romans do. When we are in a strange place, we should behavior just like the local people.
+1.6. For the first meeting, English people usually say "Hello" or "Nice to meet you" and shake hands with you. In the public place, they also act very decently. In their views, it is very impolite to cut in line. They have formed a habit to wait in a queue. At home, they are also very polite. When in a strange place, we should do in Rome as the Romans do. Moreover, it is also polite that we behave like the local people.
+1.7. In first meeting, the English often say "hi" or "nice to meet you!" and then shake hands with you. In public occasions, they behave mannerly. They think jumping a queue is impolite and they always line up. Also, they are polite at home. When in Rome do as the Romans do. When we are in a strange land, we should behave like the natives.
+[vocabulary]
+behavior /b ih 'hh ey v y ax/
+uncourteous /,ah n 'k er t ir s/
+#中文学习引擎xml释义
+#题型：read_syllable
+read_syllable层级字段说明：
+
+属性	注释
+phone_score	声韵分
+fluency_score	流畅度分（暂会返回0分）
+tone_score	调型分
+total_score	总分
+beg_pos/end_pos	始末位置（单位：帧，每帧相当于10ms)
+content	试卷内容
+time_len	时长（单位：帧，每帧相当于10ms）
+sentence层级字段说明：
+
+属性	注释
+time_len	时长（单位：帧，每帧相当于10ms）
+beg_pos/end_pos	始末位置（单位：帧，每帧相当于10ms)
+content	试卷内容
+word层级字段说明：
+
+属性	注释
+beg_pos / end_pos	始末位置（单位：帧，每帧相当于10ms)
+symbol	拼音：数字代表声调，5表示轻声
+content	试卷内容
+time_len	时长（单位：帧，每帧相当于10ms)
+syll层级字段说明：
+
+属性	注释
+beg_pos / end_pos	始末位置（帧）
+dp_message	增漏信息，0(正确）16(漏读）32(增读）64(回读）128(替换）
+symbol	拼音：数字代表声调，5表示轻声
+content	试卷内容
+rec_node_type	paper(试卷内容）,sil(非试卷内容）
+time_len	时长（单位：帧，每帧相当于10ms)
+phone层级字段说明：
+
+属性	注释
+beg_pos / end_pos	始末位置（单位：帧，每帧相当于10ms)
+dp_message	增漏信息，0(正确）16(漏读）32(增读）64(回读）128(替换）
+content	试卷内容
+rec_node_type	paper(试卷内容）,sil(非试卷内容）
+perr_msg	错误信息：1(声韵错）2(调型错）3(声韵调型错），当dp_message不为0时，perr_msg可能出现与dp_message值保持一致的情况
+time_len	时长（单位：帧，每帧相当于10ms)
+#题型：read_word
+read_word层级字段说明：
+
+属性	注释
+phone_score	声韵分
+fluency_score	流畅度分（暂会返回0分）
+tone_score	调型分
+total_score	总分
+beg_pos / end_pos	始末位置（单位：帧，每帧相当于10ms)
+content	试卷内容
+time_len	时长（单位：帧，每帧相当于10ms）
+sentence层级字段说明：
+
+属性	注释
+time_len	时长（单位：帧，每帧相当于10ms)
+beg_pos / end_pos	始末位置（单位：帧，每帧相当于10ms)
+content	试卷内容
+word层级字段说明：
+
+属性	注释
+beg_pos / end_pos	始末位置（单位：帧，每帧相当于10ms)
+symbol	拼音：数字代表声调，5表示轻声
+content	试卷内容
+time_len	时长（单位：帧，每帧相当于10ms)
+syll层级字段说明：
+
+属性	注释
+beg_pos / end_pos	始末位置（单位：帧，每帧相当于10ms)
+dp_message	增漏信息，0(正确）16(漏读）32(增读）64(回读）128(替换）
+symbol	拼音：数字代表声调，5表示轻声
+content	试卷内容
+rec_node_type	paper(试卷内容）,sil(非试卷内容）
+time_len	时长（单位：帧，每帧相当于10ms)
+phone层级字段说明：
+
+属性	注释
+beg_pos / end_pos	始末位置（单位：帧，每帧相当于10ms)
+dp_message	增漏信息，0(正确）16(漏读）32(增读）64(回读）128(替换）
+content	试卷内容
+rec_node_type	paper(试卷内容）,sil(非试卷内容）
+perr_msg	错误信息：1(声韵错）2(调型错）3(声韵调型错），当dp_message不为0时，perr_msg可能出现与dp_message值保持一致的情况
+time_len	时长（单位：帧，每帧相当于10ms）
+#题型：read_sentence
+read_sentence层级字段说明：
+
+属性	注释
+phone_score	声韵分
+fluency_score	流畅度分
+tone score	调型分
+total score	总分
+beg_pos/end_pos	始末位置（单位，帧，每帧相当于10ms)
+content	试卷内容
+time_len	时长（单位：帧，每帧相当于10ms)
+sentence层级字段说明：
+
+属性	注释
+phone_score	声韵分
+fluency_score	流畅度分
+tone_score	调型分
+total_score	总分
+beg_pos/end_pos	始末位置（单位，帧，每帧相当于10ms)
+content	试卷内容
+time_len	时长（单位：帧，每帧相当于10ms)
+word层级字段说明：
+
+属性	注释
+beg_pos/end_pos	始末位置（帧）
+symbol	拼音：数字代表声调，5表示轻声
+content	试卷内容
+time_len	时长（单位：帧，每帧相当于10ms)
+syll层级字段说明：
+
+属性	注释
+beg_pos / end_pos	始末位置（帧）
+dp_message	增漏信息，0(正确）16(漏读）32(增读）64(回读）128(替换）
+symbol	拼音：数字代表声调，5表示轻声
+time_len	时长（单位：帧，每帧相当于10ms)
+content	试卷内容
+rec_node_type	paper(试卷内容）,sil(非试卷内容)
+time_len	时长（单位：帧，每帧相当于10ms)
+phone层级字段说明：
+
+属性	注释
+beg_pos / end_pos	始末位置（帧）
+dp_message	增调信息，0(正确）16(漏读）32(增读）64(回读）128(替换）
+content	试卷内容
+rec_node_type	paper(试卷内容）,sil(非试卷内容）
+content	试卷内容
+perr_msg	错误信息：1(声韵错）2(调型错）3(声的调型错），当dp_message不为0时，perr_msg可能出现与dp_message值保持一致的情况
+time_len	时长（单位，帧，每帧相当于10ms)
+#题型：read_chapter
+read_chapter层级字段说明：
+
+属性	注释
+phone_score	声韵分
+fluency_score	流畅度分
+tone_score	调型分
+total_score	总分
+beg_pos / end_pos	始末位置（帧）
+content	试卷内容
+time_len	时长（单位，帧，每帧相当于10ms)
+sentence层级字段说明：
+
+属性	注释
+phone_score	声韵分
+fluency_score	流畅度分
+tone_score	调型分
+total_score	总分
+beg_pos / end_pos	始末位置（帧）
+content	试卷内容
+time_len	时长（单位，帧，每帧相当于10ms)
+word层级字段说明：
+
+属性	注释
+beg_pos / end_pos	始末位置（帧）
+symbol	拼音：数字代表声调，5表示轻声
+content	试卷内容
+time_len	时长（单位：帧，每帧相当于10ms)
+syll层级字段说明：
+
+属性	注释
+beg_pos / end_pos	始末位置（帧）
+dp_message	增漏信息，0(正确）16(漏读）32(增读）64(回读）128(替换）
+symbol	拼音：数字代表声调，5表示轻声
+content	试卷内容
+rec_node_type	paper(试卷内容）,sil(非试卷内容）
+time_len	时长（单位：帧，每帧相当于10ms)
+phone层级字段说明：
+
+属性	注释
+beg_pos / end_pos	始末位置（帧）
+dp_message	增漏信息，0(正确）16(漏读）32(增读）64(回读）128(替换）
+content	试卷内容
+rec_node_type	paper(试卷内容）,sil(非试卷内容）
+perr_msg	错误信息：1(声韵错）2(调型错）3(声的调型错） ，当dp_message不为0时，perr_msg可能出现与dp_message值保持一致的情况
+time_len	时长（单位：帧，每帧相当于10ms)
+#学习引擎xml输出表一
+#题型：read_word
+read_word层说明：
+
+属性	注释
+beg_pos	多个单词开始边界时间
+content	多个单词内容
+end_pos	多个单词结束边界时间
+accuracy_score	准确度评分
+standard_score	标准度评分
+except_info	异常信息
+is_rejected	是否被拒
+total_score	多个单词总分的平均分
+sentence(句子）层说明：
+
+属性	注释
+beg_pos	多个单词开始边界时间
+content	句子内容
+end_pos	句子结束边界时间
+index	句子索引
+word(单词）层说明
+
+属性	注释
+beg_pos	单词开始边界时间
+content	单词内容
+end_pos	单词结束边界时间
+dp_message	单词增漏读信息
+global_index	单词在全篇章索引
+index	单词在句子索引
+property	单词属性（半句|重读|关键字等，效果优化中，无需关注）
+total_score	单词总分
+pitch	单词基频信息（预留字段，无需关心）
+pitch_beg	单词基频开始值
+pitch_end	单词基频结束值
+werr_msg	针对错误单词给出结果（正确不输出）
+syll(音节）层说明：
+
+属性	注释
+beg_pos	音节开始边界时间
+content	音节内容
+end_pos	音节结束边界时间
+serr_msg	音节错误信息
+syll_accent	音节重读标记
+phone(音素）层说明：
+
+属性	注释
+beg_pos	音素开始边界时间
+content	音素内容
+end_pos	音素结束边界时间
+dp_message	音素增漏读信息
+#题型：read_ sentence
+read_chapter(篇章）层说明：
+
+属性	注释
+accuracy_score	准确度评分
+beg_pos	篇章开始时间
+content	篇章内容
+end_pos	篇章结束时间
+except_info	异常信息
+fluency_score	流畅度评分
+integrity_score	完整度评分
+standard_score	标准度分
+is_rejected	是否被拒
+total_score	篇章总分
+word_count	篇章全部单词数量
+sentence(句子）层说明：
+
+属性	注释
+beg_pos	句子开始边界时间
+content	句子内容
+end_pos	句子结束边界时间
+accuracy_score	准确度评分
+fluency_score	流畅度评分
+standard_score	标准度分
+index	句子索引
+score(替换为total_score)	全部分数，结构体（隐藏）
+word_count	句子全部单词数量
+word(单词）层说明：
+
+属性	注释
+beg_pos	单词开始边界时间
+content	单词内容
+end_pos	单词结束边界时间
+dp_message	单词增漏读信息
+global_index	单词在全篇章索引
+index	单词在句子索引
+property	单词属性（半句|重读|关键字等，效果优化中，无需关注）
+total_score	单词总分
+pitch	单词基频信息（预留字段，无需关心）
+pitch_beg	单词基频开始值
+pitch_end	单词基频结束值
+werr_msg	针对错误单词给出结果（正确不输出）
+syll(音节）层说明：
+
+属性	注释
+beg_pos	音节开始边界时间
+content	音节内容
+end_pos	音节结束边界时间
+serr_msg	音节错误信息
+syll_accent	音节重读标记
+phone(音素）
+
+属性	注释
+beg_pos	音素开始边界时间
+content	音素内容
+end_pos	音素结束边界时间
+dp_message	音素增漏读信息
+#题型：read_chapter
+read_chapter(篇章）层说明：
+
+属性	注释
+accuracy_score	准确度评分
+beg_pos	篇章开始时间
+content	篇章内容
+end_pos	篇章结束时间
+except_info	异常信息
+fluency_score	流畅度评分
+integrity_score	完整度评分
+standard_score	标准度分
+is_rejected	是否被拒
+total_score	篇章总分
+word_count	篇章全部单词数量
+sentence(句子）层说明：
+
+属性	注释
+beg_pos	句子开始边界时间
+content	句子内容
+end_pos	句子结束边界时间
+accuracy_score	准确度评分
+fluency_score	流畅度评分
+standard_score	标准度分
+index	句子索引
+score(替换为total_score)	全部分数，结构体（隐藏）
+word_count	句子全部单词数量
+word(单词）层说明：
+
+属性	注释
+beg_pos	单词开始边界时间
+content	单词内容
+end_pos	单词结束边界时间
+dp_message	单词增漏读信息
+global_index	单词在全篇章索引
+index	单词在句子索引
+property	单词属性（半句|重读|关键字等，效果优化中，无需关注）
+total_score	单词总分
+werr_msg	针对错误单词给出结果（正确不输出）
+syll(音节）层说明：
+
+属性	注释
+beg_pos	音节开始边界时间
+content	音节内容
+end_pos	音节结束边界时间
+serr_msg	音节错误信息
+syll_accent	音节重读标记
+phone(音素）层说明：
+
+属性	注释
+beg_pos	音素开始边界时间
+content	音素内容
+end_pos	音素结束边界时间
+#题型：topic（英文自由题）
+rec_paper层说明：
+
+属性	注释
+accuracy_score	语义准确度评分
+beg_pos	朗读开始时间
+content	朗读识别内容
+end_pos	朗读结束时间
+except_info	异常信息
+phone_score	发音准确度评分
+speeking_speed	语速（一般在140-200词每分钟）
+total_score	总分
+sentence层说明：
+
+属性	注释
+content	句子内容
+index	句子索引
+word层说明：
+
+属性	注释
+beg_pos	单词开始边界时间
+content	单词内容
+end_pos	单词结束边界时间
+#题型：simple_expression(英文情景反应）
+rec_paper层说明：
+
+属性	注释
+beg_pos	朗读开始时间
+content	朗读识别内容
+end_pos	朗读结束时间
+except_info	异常信息
+phone_score	发音准确度评分
+total_score	总分
+sentence层说明：
+
+属性	注释
+content	句子内容
+index	句子索引
+word层说明：
+
+属性	注释
+beg_pos	单词开始边界时间
+content	单词内容
+end_pos	单词结束边界时间
+#题型：read_choice（英文选择题）
+free_choice层说明：
+
+属性	注释
+beg_pos	朗读开始时间
+content	朗读识别内容
+end_pos	朗读结束时间
+except_info	异常信息
+total_score	总分
+#学习引擎xml输出表二
+#注意事项与补充说明
+注意事项	说明
+is_rejected返回字段（部分评测题型无此字段返回）	true：被拒，表明引擎检测到乱读，分值不能作为参考
+false：正常
+单词、句子、篇章题型中的标准度分	只有文本中单词个数>=5个时，才会有标准度分。
+单词、句子、篇章题型的乱说检测功能	只有文本中单词个数>=5个时，才会有乱说检测功能。（自由题型目前无乱说检测功能）
+except_info属性值	except_info=28673时，16进制为0x7001，表示引擎判断该语音为无语音或音量小类型
+except_info=28676时，16进制为0x7004，表示引擎判断该语音为乱说类型
+except_info=28680时，16进制为0x7008，表示引擎判断该语音为信噪比低类型
+except_info=28690时，16进制为0x7012，表示引擎判断该语音为截幅类型
+except_info=28689时，16进制为0x7011，表示引擎判断没有音频输入，请检测音频或录音设备是否正常
+dp_message属性值	dp_message=0时，表示引擎判断该单词或该音素正常读了
+dp_message=16时，表示引擎判断该单词或该音素漏读
+dp_message=32时，表示引擎判断该单词或该音素增读
+property、werr_msg属性(效果优化中，无需关注）	只有在引擎判断单词读错时才会出现werr_msg这个属性，比如该单词的property=16，表示该单词处需要连读，如果xml中出现属性werr_msg=512,则表明引擎判断语音此单词处未连读,否则表明引擎此处朗读正确。
+连读：property=16；werr_msg=512
+重读：property=32；werr_msg=2048句末升降调：property=64；werr_msg=4096
+意群停顿：property=2；werr_msg=256
+半句：property=12，文本单词后为单独逗号符号时，property为12，这个是引擎的分词标记，在句子内的分句符-逗号前的单词会出现此属性，表示是半句的标志，没有特殊的含义。
+serr_msg属性	serr_msg=0时，表示引擎判断该音节读的正确
+serr_msg=1时，表示引擎判断该音节读错
+serr_msg=2048时，表示该音节需要重（zhong）读但引擎判断语音未重读（此时syll_accent为1，效果优化中，建议不关注此情况）
+serr_msg=2049时，表示此音节需要重（zhong）读但引擎判断语音未重读且该音节读错（此时syll_accent应为1，效果优化中，可以不关注此情况）
+syll_accent属性	syll_accent=0时，表示此音节无需重读
+syll_accent=1时，表示此音节需重读
+部分拼音试卷，如：在<zai4>达<da2>瑞八岁的时候，有一天他想<xiang3>去看电影。	添加拼音标注的汉字个数不超过整个试卷中汉字个数的三分之一。
+部分题型如字、词、句、篇章的syll层、phone层	content试卷内容出现（sil与silv 表示静音， fil 表示噪音）
+gwpp、pitch、reject_type、no_plo_word、dur_value、magnitude_value、pitch_value、score_pattern	这些字段为模型返回的预留字段，无需关心
+#错误码
+错误码	错误码描述
+10163	参数校验失败，由客户端参数校验失败引起，客户端需要依据返回的message字段中的描述来更改请求参数
+10313	请求参数 第一帧没有传app_id 或者传 的app_id 与api_key 不匹配。
+40007	音频解码失败，请检查所传的音频是否与encoding字段描述的编码格式对应。
+11201	接口使用量超出了购买的最大限制，请购买后继续使用。
+10114	请求超时，会话时间超过了300s，请控制会话时间，保持不超过300s
+10043	音频解码失败，请确保所传音频编码格式与请求参数保持一致。
+10161	base64解码失败，检查发送的数据是否使用base64编码了
+10200	读取数据超时，检查是否累计10s未发送数据并且未关闭连接
+10160	请求数据格式非法，检查请求数据是否是合法的json
+11200	功能未授权
+60114	评测音频长度过长
+10139	参数错误
+48196	实例禁止重复调用该接口
+40006	无效参数
+40010	无响应
+40016	初始化失败
+40017	没有初始化
+40023	无效配置
+40034	参数未设置
+40037	无评测文本
+40038	无评测语音
+40040	非法数据
+42306	授权数不够
+68676	乱说
+30002	ssb没有cmd参数
+48195	实例评测试卷未设置，试题格式错误，请检查评测文本是否与试题匹配，特别是英文题型需要在试题中加特殊标记、未设置ent、category等参数等
+30011	sid为空，如上传音频未设置aus
+68675	不正常的语音数据，请检查是否为16k、16bit、单声道音频，并且检查aue参数值指定是否与音频类型匹配
+48205	实例未评测，如没有获取到录音、上传音频为空导致的报错
+#调用示例
+注: demo只是一个简单的调用示例，不适合直接放在复杂多变的生产环境使用
+
+语音评测流式API demo java语言
+
+语音评测流式API demo js语言
+
+语音评测流式API demo python3语言
+
+语音评测流式API demo nodejs语言
+
+语音评测流式API JAVA-SDK-DEMO
+
+讯飞开放平台AI能力-JAVASDK: Github地址
+
+讯飞开放平台AI能力-PHPSDK: Github地址
+
+#常见问题
+语音评测的评分标准是什么？
+
+维度	成人占比	小学生占比	A（9-10分）
+准确度	50%	60%	单词发音准确清晰
+流畅度	30%	30%	朗读流利，语速正常，基本不出现停顿、重复、自我更正等表现
+标准度（包含情感）	20%	10%	发音习惯符合英语母语标准（无中式口音），能灵活地运用连读、重读、失音、爆破等发音技巧，节奏良好，感情充沛
+语音评测Web api支持多少路并发？
+
+答：默认支持50路并发
+
+语音评测最多支持多长时间的语音输入？
+
+答：对于所有评测题型，建议使用3分钟以内的语音输入，如果音频发送会话持续超过5分钟会报错10114或60114错误。
+
+语音评测支持的音频有什么要求？
+
+答：音频采样率要是 16k、采样精度16 位、单声道音频。样例音频请参照java demo中提供的音频
+
+新的流式版评测与之前的普通版评测（已下线）有什么区别呢？
+
+答：主要的区别有
+1、新版流式评测采用了全新的架构，在产品功能、评测效果、服务稳定性等方面全面优于普通版评测；
+2、新版流式评测支持更多题型，除普通版支持的字词句篇章等题型外，还支持如英文的情景反应、自由说、看图说话、口头作文等题型（注意此类题型需要配合试卷定制服务，请在产品详情页查看相应套餐介绍）；
+3、新版流式评测采用新架构，暂时只支持返回xml格式结果，json格式会在近期支持，敬请期待；
+4、新版流式版评测采用websocket协议，普通版评测是基于http协议，接入方式不同，详细请参照开发文档及示例代码集成开发。
+
+语音评测（普通版）老SDK的MSC，如何切换使用语音评测（流式版）接口能力呢？
+
+答：参数需修改如下
+1、设置必传参数sub=ise；
+2、中文设置必传参数ent=cn_vip，英文设置必传参数ent=en_vip；
+3、添加如上两个必传参数即可完成对语音评测（流式版）接口能力的使用；
+
+乱说、乱读得高分的问题怎么解决
+
+答：评测结果中会给出 is_rejected 字段，当字段值为 true 时，说明此时是用户乱说导致的拒识，开发者可根据这个字段判断此次用户是否为乱说。 如果引擎报出乱说，那么就可以认为评分已经不可信。可根据except_info属性值初步判断乱读的原因
