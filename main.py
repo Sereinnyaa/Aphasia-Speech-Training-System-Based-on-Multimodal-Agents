@@ -8,6 +8,9 @@ from openai import OpenAI
 import grpc
 import numpy as np
 import soundfile
+import unreal
+import asyncio
+from websocket_server import websocket_server
 
 # 导入Audio2Face的gRPC协议
 import audio2face_pb2
@@ -21,7 +24,7 @@ from record_audio import record_audio
 # 配置部分
 # =================================
 # Azure配置
-AZURE_SPEECH_KEY = "24fu1cEm5QVfAW2PhuldFaS4HKug4sUOfIxM8ksUEvk3WZ8V4UMOJQQJ99BCAC3pKaRXJ3w3AAAYACOGQFMP"
+AZURE_SPEECH_KEY = "AhQ99tqLmu33mma84zXt6IESBhvCEXYnlHPqGHM5Mb8D4Oyu9tygJQQJ99BDAC3pKaRXJ3w3AAAYACOGYEtN"
 AZURE_SPEECH_REGION = "eastasia"  #
 AZURE_SPEECH_RECOGNITION_LANGUAGE = "zh-CN"  # 中文识别
 AZURE_SPEECH_SYNTHESIS_VOICE_NAME = "zh-CN-XiaochenNeural"  # 中文女声
@@ -43,8 +46,14 @@ XUNFEI_API_KEY = "91205afe0d17e38c61be35fca346503c"
 XUNFEI_API_SECRET = "ff446b96b01252f80331ae6e4c64984a"
 
 # 输出音频文件路径
-OUTPUT_WAV = r"E:\Research\Aphasia\UE_project\Demo_5_3\Content\Python\output\LLMResponse.wav"
-USER_WAV = r"E:\Research\Aphasia\UE_project\Demo_5_3\Content\Python\output\UserSpeech.wav"  
+OUTPUT_WAV = r"E:\Research\Aphasia\Conversation\LLMResponse.wav"
+USER_WAV = r"E:\Research\Aphasia\Conversation\UserSpeech.wav"  
+
+# =================================
+# WebSocket配置
+# =================================
+WS_HOST = "localhost"
+WS_PORT = 8765
 
 # =================================
 # 1. 语音识别模块 (STT) - 使用Azure API
@@ -86,16 +95,14 @@ class SpeechRecognizer:
         result = recognizer.recognize_once_async().get()
         
         if result.reason == speechsdk.ResultReason.RecognizedSpeech:
-            print(f"识别到: {result.text}")
             return True, result.text
         elif result.reason == speechsdk.ResultReason.NoMatch:
             print(f"未能识别语音: {result.no_match_details}")
             return False, "无法识别您的语音，请重试。"
         elif result.reason == speechsdk.ResultReason.Canceled:
-            cancellation = speechsdk.CancellationDetails.from_result(result)
-            print(f"语音识别已取消: {cancellation.reason}")
-            if cancellation.reason == speechsdk.CancellationReason.Error:
-                print(f"错误详情: {cancellation.error_details}")
+            print(f"语音识别已取消: {result.cancellation_details.reason}")
+            if result.cancellation_details.reason == speechsdk.CancellationReason.Error:
+                print(f"错误详情: {result.cancellation_details.error_details}")
             return False, "语音识别被取消，请重试。"
         
         return False, "识别失败，请重试。"
@@ -178,9 +185,9 @@ class LLMProcessor:
         )
         # 设置人物角色和背景提示
         self.system_prompt = """
-        你是一个AI数字人助手，性格友好、知识丰富，擅长语言学习辅导。
-        请以简洁、自然的方式回答问题，每次回复控制在50字以内，便于语音合成。
-        回答时应避免使用长句和复杂结构，保持语言流畅自然。
+            你是一个数字言语治疗师，具备失语症康复训练的专业知识，擅长与语言障碍患者沟通。
+            你的回答要温和、简洁，使用患者容易理解的词汇，避免专业术语和复杂表达。
+            请在语义上给予积极鼓励，每次回复控制在50字以内，以便语音合成。
         """
         self.messages = [{"role": "system", "content": self.system_prompt}]
         self.max_retries = 3  # 最大重试次数
@@ -207,23 +214,31 @@ class LLMProcessor:
                     print(f"API调用最终失败: {str(e)}")
                     raise
         
+    async def send_ws_message(self, message_type, content):
+        """发送WebSocket消息"""
+        message = {
+            'type': message_type,
+            'content': content
+        }
+        await websocket_server.broadcast(message)
+        
     def process_text(self, text):
         """处理用户输入文本，返回AI回答"""
         # 添加用户消息
         self.messages.append({"role": "user", "content": text})
         
         try:
+            # 发送用户输入到UE
+            asyncio.create_task(self.send_ws_message('user_input', text))
+            
             # 调用OpenAI API获取回复
-            # response = self.client.chat.completions.create(
-            #     model=OPENAI_MODEL,
-            #     messages=self.messages,
-            #     temperature=0.7,
-            #     max_tokens=150
-            # )
             response = self._make_api_call(self.messages)
             
             # 获取回复内容
             reply = response.choices[0].message.content
+            
+            # 发送AI回复到UE
+            asyncio.create_task(self.send_ws_message('ai_response', reply))
             
             # 将回复添加到消息历史
             self.messages.append({"role": "assistant", "content": reply})
@@ -242,14 +257,18 @@ class LLMProcessor:
         """处理评测结果，生成反馈意见"""
         # 添加专门的评测结果处理提示
         assessment_prompt = f"""
-        用户说了这句话："{text}"
-        
-        语音评测系统给出的原始评测结果XML为：
-        {assessment_result}
-        
-        请分析这个评测结果，给出对用户发音的具体建议。
-        重点关注：准确度、流畅度、发音问题等方面。
-        请给出简短、具体、易于执行的改进建议。
+            你是一位数字言语治疗师，正在帮助一位患有失语症的患者进行发音训练。
+            患者刚刚朗读了："{text}"。
+            以下是语音评测系统的结果（XML格式）：
+            {assessment_result}
+
+            请根据这个评测结果，用亲切、自然的语言给出反馈。
+            可以从"发音是否准确"、"语速流畅度"、"音调和节奏"等角度出发。
+            请尽量使用口语化、生活化的表达，比如：
+            "你刚才那个'喝'字有点轻了，下次可以更用力一点。"
+
+            避免列出1、2、3点，不要使用"发音问题"、"改进建议"等标签，而是像一位真正的语言康复专家一样温柔地鼓励患者。
+            回答尽量控制在80字以内，便于语音合成。
         """
         
         # 添加用户消息
@@ -296,28 +315,31 @@ class TextToSpeech:
         
     def synthesize_speech(self, text, output_file):
         """将文本转换为语音并保存为WAV文件"""
-        # 创建音频配置
-        audio_config = speechsdk.audio.AudioOutputConfig(filename=output_file)
-        
-        # 创建语音合成器
-        speech_synthesizer = speechsdk.SpeechSynthesizer(
-            speech_config=self.speech_config, 
-            audio_config=audio_config
-        )
-        
-        # 合成语音
-        result = speech_synthesizer.speak_text_async(text).get()
-        
-        if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-            print(f"语音合成完成, 保存至 {output_file}")
-            return True
-        elif result.reason == speechsdk.ResultReason.Canceled:
-            cancellation = speechsdk.CancellationDetails.from_result(result)
-            print(f"语音合成取消: {cancellation.reason}")
-            if cancellation.reason == speechsdk.CancellationReason.Error:
-                print(f"错误详情: {cancellation.error_details}")
+        try:
+            # 创建音频配置
+            audio_config = speechsdk.audio.AudioOutputConfig(filename=output_file)
+            
+            # 创建语音合成器
+            speech_synthesizer = speechsdk.SpeechSynthesizer(
+                speech_config=self.speech_config, 
+                audio_config=audio_config
+            )
+            
+            # 合成语音
+            result = speech_synthesizer.speak_text_async(text).get()
+            
+            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                print(f"语音合成完成, 保存至 {output_file}")
+                return True
+            elif result.reason == speechsdk.ResultReason.Canceled:
+                print(f"语音合成取消: {result.cancellation_details.reason}")
+                if result.cancellation_details.reason == speechsdk.CancellationReason.Error:
+                    print(f"错误详情: {result.cancellation_details.error_details}")
+                return False
             return False
-        return False
+        except Exception as e:
+            print(f"语音合成出错: {str(e)}")
+            return False
 
 
 # =================================
@@ -427,6 +449,16 @@ class SpeechAssessmentModule:
             api_secret=XUNFEI_API_SECRET,
             ise_type="cn"  # 中文评测
         )
+        self.llm_processor = LLMProcessor()  # 添加LLM处理器
+        
+    async def send_assessment_result(self, scores, feedback):
+        """发送评测结果到UE"""
+        message = {
+            'type': 'assessment_result',
+            'scores': scores,
+            'feedback': feedback
+        }
+        await websocket_server.broadcast(message)
         
     def assess_speech(self, text, audio_file, category=None):
         """
@@ -459,9 +491,15 @@ class SpeechAssessmentModule:
             result = self.assessor.assess(text, audio_file, timeout=15)
             
             if result:
-                # # 打印原始XML结果以便调试
-                # print("评测完成，原始XML评测结果：")
-                # print(result)
+                # 提取评分
+                scores = self.assessor.extract_scores(result)
+                
+                # 获取LLM反馈
+                feedback = self.llm_processor.process_assessment_result(text, result)  
+                
+                # 发送评测结果到UE
+                asyncio.create_task(self.send_assessment_result(scores, feedback))
+                
                 return result
             else:
                 print("评测失败或超时")
@@ -491,146 +529,158 @@ def ignore_stderr():
 # =================================
 # 主程序
 # =================================
-def main():
-    """主程序函数"""
-    # 检查是否提供了退出命令
-    def check_exit(text):
-        exit_words = ["退出", "再见", "结束", "拜拜", "关闭", "停止"]
-        return any(word in text for word in exit_words)
+async def main_async():
+    """异步主程序函数"""
+    # 启动WebSocket服务器
+    await websocket_server.start()
+    
+    try:
+        # 检查是否提供了退出命令
+        def check_exit(text):
+            exit_words = ["退出", "再见", "结束", "拜拜", "关闭", "停止"]
+            return any(word in text for word in exit_words)
 
-    # 初始化各个模块
-    print("正在初始化AI数字人...")
-    
-    # 初始化语音识别
-    speech_recognizer = SpeechRecognizer()
-    
-    # 初始化LLM处理器
-    llm_processor = LLMProcessor()
-    
-    # 初始化文本转语音
-    text_to_speech = TextToSpeech()
-    
-    # 初始化Audio2Face连接器
-    a2f_connector = Audio2FaceConnector(url=A2F_URL)
-    
-    # 初始化语音评测模块
-    speech_assessment = SpeechAssessmentModule()
-    
-    print("AI数字人已准备就绪，请开始对话...")
+        # 初始化各个模块
+        print("正在初始化AI数字人...")
+        
+        # 初始化语音识别
+        speech_recognizer = SpeechRecognizer()
+        
+        # 初始化LLM处理器
+        llm_processor = LLMProcessor()
+        
+        # 初始化文本转语音
+        text_to_speech = TextToSpeech()
+        
+        # 初始化Audio2Face连接器
+        a2f_connector = Audio2FaceConnector(url=A2F_URL)
+        
+        # 初始化语音评测模块
+        speech_assessment = SpeechAssessmentModule()
+        
+        print("AI数字人已准备就绪，请开始对话...")
 
-    # 主循环
-    while True:
-        try:
-            # 默认模式 - 正常对话
-            print("\n请选择: 1.正常对话 2.语音评测 3.退出")
-            choice = input("请输入选项编号: ")
-            
-            if choice == "3":
-                print("感谢使用，再见！")
-                break
+        # 主循环
+        while True:
+            try:
+                # 默认模式 - 正常对话
+                print("\n请选择: 1.正常对话 2.语音评测 3.退出")
+                choice = input("请输入选项编号: ")
                 
-            elif choice == "2":
-                # 语音评测模式
-                print("\n进入语音评测模式")
-                print("请输入标准文本，按回车确认:")
-                standard_text = input()
-                
-                if not standard_text:
-                    print("未输入标准文本，返回主菜单。")
-                    continue
-                
-                print(f"请朗读: \"{standard_text}\"")
-                # 识别并保存语音
-                success, recognized_text = speech_recognizer.recognize_and_save()
-                
-                if not success:
-                    print("语音识别失败，返回主菜单。")
-                    continue
-                    
-                print(f"识别结果: {recognized_text}")
-                
-                # 进行语音评测
-                xml_result = speech_assessment.assess_speech(standard_text, USER_WAV)
-                
-                if xml_result:
-                    # 提取评分
-                    scores = speech_assessment.assessor.extract_scores(xml_result)
-                    
-                    # 显示评测结果
-                    print("\n===== 语音评测结果 =====")
-                    print(f"总分: {scores.get('total_score', 0):.2f}")
-                    print(f"流畅度: {scores.get('fluency_score', 0):.2f}")
-                    print(f"完整度: {scores.get('integrity_score', 0):.2f}")
-                    print(f"发音分: {scores.get('phone_score', 0):.2f}")
-                    print(f"声调分: {scores.get('tone_score', 0):.2f}")
-                    
-                    # LLM分析评测结果，给出改进建议
-                    feedback = llm_processor.process_assessment_result(standard_text, xml_result)
-                    
-                    # 输出改进建议
-                    print("\n===== 改进建议 =====")
-                    print(feedback)
-                    
-                    # 语音合成并播放改进建议
-                    tts_success = text_to_speech.synthesize_speech(
-                        text=feedback,
-                        output_file=OUTPUT_WAV
-                    )
-                    
-                    if tts_success:
-                        # 推送到Audio2Face
-                        a2f_connector.push_audio_file(
-                            audio_file_path=OUTPUT_WAV,
-                            instance_name=A2F_INSTANCE
-                        )
-                else:
-                    print("评测失败，无结果返回。")
-                
-            else:  # 默认为正常对话模式
-                # 1. 语音识别
-                with ignore_stderr():
-                    success, recognized_text = speech_recognizer.recognize_from_microphone()
-                
-                if not success or not recognized_text:
-                    print("语音识别失败，请重试...")
-                    continue
-                    
-                # 检查是否要退出
-                if check_exit(recognized_text):
+                if choice == "3":
                     print("感谢使用，再见！")
                     break
                     
-                # 2. LLM处理
-                response_text = llm_processor.process_text(recognized_text)
-                print(f"AI回答: {response_text}")
-                
-                # 3. 文本转语音
-                tts_success = text_to_speech.synthesize_speech(
-                    text=response_text,
-                    output_file=OUTPUT_WAV
-                )
-                
-                if not tts_success:
-                    print("语音合成失败，跳过...")
-                    continue
+                elif choice == "2":
+                    # 语音评测模式
+                    print("\n进入语音评测模式")
+                    print("请输入标准文本，按回车确认:")
+                    standard_text = input()
                     
-                # 4. 推送到Audio2Face
-                a2f_connector.push_audio_file(
-                    audio_file_path=OUTPUT_WAV,
-                    instance_name=A2F_INSTANCE
-                )
+                    if not standard_text:
+                        print("未输入标准文本，返回主菜单。")
+                        continue
+                    
+                    print(f"请朗读: \"{standard_text}\"")
+                    # 识别并保存语音
+                    success, recognized_text = speech_recognizer.recognize_and_save()
+                    
+                    if not success:
+                        print("语音识别失败，返回主菜单。")
+                        continue
+                        
+                    print(f"识别结果: {recognized_text}")
+                    
+                    # 进行语音评测
+                    xml_result = speech_assessment.assess_speech(standard_text, USER_WAV)
+                    
+                    if xml_result:
+                        # 提取评分
+                        scores = speech_assessment.assessor.extract_scores(xml_result)
+                        
+                        # 显示评测结果
+                        print("\n===== 语音评测结果 =====")
+                        print(f"总分: {scores.get('total_score', 0):.2f}")
+                        print(f"流畅度: {scores.get('fluency_score', 0):.2f}")
+                        print(f"完整度: {scores.get('integrity_score', 0):.2f}")
+                        print(f"发音分: {scores.get('phone_score', 0):.2f}")
+                        print(f"声调分: {scores.get('tone_score', 0):.2f}")
+                        
+                        # LLM分析评测结果，给出改进建议
+                        feedback = llm_processor.process_assessment_result(standard_text, xml_result)
+                        
+                        # 输出改进建议
+                        print("\n===== 改进建议 =====")
+                        print(feedback)
+                        
+                        # 语音合成并播放改进建议
+                        tts_success = text_to_speech.synthesize_speech(
+                            text=feedback,
+                            output_file=OUTPUT_WAV
+                        )
+                        
+                        if tts_success:
+                            # 推送到Audio2Face
+                            a2f_connector.push_audio_file(
+                                audio_file_path=OUTPUT_WAV,
+                                instance_name=A2F_INSTANCE
+                            )
+                    else:
+                        print("评测失败，无结果返回。")
+                    
+                else:  # 默认为正常对话模式
+                    # 1. 语音识别
+                    with ignore_stderr():
+                        success, recognized_text = speech_recognizer.recognize_from_microphone()
+                    
+                    if not success or not recognized_text:
+                        print("语音识别失败，请重试...")
+                        continue
+                        
+                    # 检查是否要退出
+                    if check_exit(recognized_text):
+                        print("感谢使用，再见！")
+                        break
+                        
+                    # 2. LLM处理
+                    response_text = llm_processor.process_text(recognized_text)
+                    print(f"AI回答: {response_text}")
+                    
+                    # 3. 文本转语音
+                    tts_success = text_to_speech.synthesize_speech(
+                        text=response_text,
+                        output_file=OUTPUT_WAV
+                    )
+                    
+                    if not tts_success:
+                        print("语音合成失败，跳过...")
+                        continue
+                        
+                    # 4. 推送到Audio2Face
+                    a2f_connector.push_audio_file(
+                        audio_file_path=OUTPUT_WAV,
+                        instance_name=A2F_INSTANCE
+                    )
+                    
+                    # 短暂等待，准备下一轮对话
+                    time.sleep(1)
+                    
+            except KeyboardInterrupt:
+                print("\n程序被用户中断")
+                break
+            except Exception as e:
+                print(f"发生错误: {str(e)}")
+                continue
                 
-                # 短暂等待，准备下一轮对话
-                time.sleep(1)
-                
-        except KeyboardInterrupt:
-            print("\n程序被用户中断")
-            break
-        except Exception as e:
-            print(f"发生错误: {str(e)}")
-            continue
-            
+    finally:
+        # 停止WebSocket服务器
+        await websocket_server.stop()
+        
     print("AI数字人程序已结束")
+
+def main():
+    """主程序入口"""
+    asyncio.run(main_async())
 
 if __name__ == "__main__":
     main()

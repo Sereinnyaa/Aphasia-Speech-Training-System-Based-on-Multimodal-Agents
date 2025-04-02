@@ -1,0 +1,37 @@
+{
+    "sessions": [
+        {
+            "date": "2024-03-20",
+            "exercises": [
+                {
+                    "type": "发音练习",
+                    "sentence": "今天天气很好",
+                    "score": 85,
+                    "feedback": "发音清晰度良好，语速适中"
+                }
+            ]
+        },
+        {
+            "date": "2024-03-22",
+            "exercises": [
+                {
+                    "type": "句子朗读",
+                    "sentence": "我喜欢吃苹果",
+                    "score": 90,
+                    "feedback": "语速适中，语调自然"
+                }
+            ]
+        },
+        {
+            "date": "2024-03-24",
+            "exercises": [
+                {
+                    "type": "句子朗读",
+                    "sentence": "你好，最近怎么样？",
+                    "score": 88,
+                    "feedback": "表达流畅，发音准确"
+                }
+            ]
+        }
+    ]
+}

@@ -155,7 +155,7 @@ class SpeechAssessment:
 
     def on_open(self, ws):
         """处理WebSocket连接打开后的操作"""
-        print("WebSocket连接已建立，正在发送评测参数...")
+        # print("WebSocket连接已建立，正在发送评测参数...")
 
         def send_data():
             """发送数据的线程函数"""
